@@ -1,7 +1,7 @@
 {
-  "name": "koishi-plugin-qz-siliconflow",
+  "name": "@quanhuzeyu/koishi-plugin-qz-siliconflow",
   "description": "",
-  "version": "0.0.1",
+  "version": "1.0.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -9,12 +9,21 @@
     "dist"
   ],
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "pubgit": "npm publish --registry=https://npm.pkg.github.com",
+    "pubnpm": "npm publish --access public --registry=https://registry.npmjs.org"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "keywords": [
     "chatbot",
     "koishi",
     "plugin"
   ],
+  "dependencies": {
+    "@satorijs/element": "^3.1.7"
+  },
   "devDependencies": {},
   "peerDependencies": {
     "koishi": "^4.17.11"
