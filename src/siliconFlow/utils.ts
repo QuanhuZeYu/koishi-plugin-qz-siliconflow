@@ -1,6 +1,7 @@
 import { Context, Session } from "koishi"
 import { ChatBot, chatBots } from "./chatBot"
 import { data, Config } from ".."
+import { ConfigService } from "../service/ConfigService"
 
 
 export class ChatBotUtils {
@@ -25,7 +26,7 @@ export class ChatBotUtils {
         try {
             const [channel] = await data.ctx.database.get('channel', {
                 id: channelId,
-                platform
+                platform: platform,
             })
 
             if (!channel?.chatbot?.history) return null
@@ -67,7 +68,7 @@ export class ChatBotUtils {
         const systemPrompt =
             config.perGuildConfig[channelId]?.systemPrompt || // 优先级 1：从频道配置中获取
             (bot?.history?.[0]?.content || undefined) ||     // 优先级 2：从 bot 历史记录中获取
-            config.baseConfig.systemPrompt;                  // 优先级 3：从基础配置中获取
+            ConfigService.getSystemPrompt()                // 优先级 3：从基础配置中获取
 
         bot.setSystemPrompt(
             ChatBotUtils.replaceSystemPrompt(systemPrompt, channelId)
@@ -79,11 +80,10 @@ export class ChatBotUtils {
     }
 
     static createBotInstance(): ChatBot {
-        const { apiEndpoint, apiKey, model } = data.config.baseConfig
         return new ChatBot(
-            apiEndpoint[0],
-            apiKey[0].key,
-            model[0].id,
+            ConfigService.getApiEndpoint(),
+            ConfigService.getApiKey(),
+            ConfigService.getModelId(),
             data.ctx.logger
         )
     }

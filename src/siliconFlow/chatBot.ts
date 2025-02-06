@@ -1,5 +1,6 @@
 import { data } from ".."
 import { ChatBotResponseMessage, ChatBotTable } from "../interface/chatBotTable"
+import { ConfigService } from "../service/ConfigService"
 
 export class ChatBot {
     api$chat = ''
@@ -65,8 +66,8 @@ export class ChatBot {
         const requestBody: ChatRequest = {
             model: this.model,
             messages: this.history,
-            temperature: 0.7,
-            max_tokens: this.maxtokens,
+            temperature: ConfigService.getTemperature() || this.temperature,
+            max_tokens: ConfigService.getMaxToken() || this.maxtokens,
         }
         this.logger.info(`[API请求] 准备发送:`, {
             url: this.api$chat,
@@ -159,11 +160,11 @@ export class ChatBot {
 
     collateHistory() {
         // 当历史记录超过18条时（系统提示+17条消息）
-        if (this.history.length > 38) {
+        if (this.history.length > ConfigService.getMaxHistory() - 2) {
             // 保留第一条系统提示语
             const systemPrompt = this.history[0];
-            // 保留系统提示 + 最后17条最新消息
-            this.history = [systemPrompt, ...this.history.slice(-37)];
+            // 删除索引 1-3 的消息，即删除第二、第三、第四条消息
+            this.history = [systemPrompt, ...this.history.slice(-ConfigService.getMaxHistory() - 3)];
         }
     }
 
