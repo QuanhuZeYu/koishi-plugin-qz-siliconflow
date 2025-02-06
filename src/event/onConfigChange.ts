@@ -1,24 +1,23 @@
 import { Schema } from "koishi";
 import { chatBots } from "../siliconFlow/chatBot";
-import { ChatBotUtils } from "../siliconFlow/utils";
-import { ConfigUtil } from "../utils";
 import { data } from "..";
+import { ConfigService } from "../service/ConfigService";
 
 export class ConfigEvent {
     static async onConfigChange() {
         // ConfigEvent.debugprint()
         const logger = data.ctx.logger;
-        data.mainConfig = data.ctx.config;
+        data.config = data.ctx.config;
 
         // 更新对话实例
         chatBots.forEach((bot, channelId) => {
-            const config = data.mainConfig;
-            bot.api$chat = ConfigUtil.getEndPoint(config) + `/chat/completions`
-            bot.apiKey = ConfigUtil.getApiKey(config)
-            bot.model = ConfigUtil.getModel(config)
-            ChatBotUtils.configureSystemPrompt(bot, channelId);
-            bot.maxtokens = data.mainConfig.chatConfig.maxToken;
-            bot.temperature = data.mainConfig.chatConfig.temperature;
+            const config = data.config;
+            bot.api$chat = ConfigService.getApiEndpoint() + `/chat/completions`
+            bot.apiKey = ConfigService.getApiKey()
+            bot.model = ConfigService.getModelId()
+            ConfigService.getSystemPrompt()
+            bot.maxtokens = ConfigService.getMaxToken()
+            bot.temperature = ConfigService.getTemperature()
         });
 
         logger.info(`缓存对话实例已更新完毕`);
@@ -27,9 +26,9 @@ export class ConfigEvent {
     static async updateConfigSystemPrompt() {
         chatBots.forEach((bot, channelId) => {
             const logger = data.ctx.logger
-            const config = data.mainConfig.chatConfig
+            const config = data.config
             // 获取系统提示，优先使用 bot.history 中的内容
-            const botSystemPrompt = bot.history?.[0]?.content ?? config.systemPrompt;
+            const botSystemPrompt = bot.history?.[0]?.content ?? ConfigService.getSystemPrompt()
 
             // 确保 guildId 存在
             if (!config.perGuildConfig[channelId]) {
@@ -44,6 +43,6 @@ export class ConfigEvent {
     }
 
     static debugprint() {
-        console.log(data.mainConfig);
+        console.log(data.config);
     }
 }
