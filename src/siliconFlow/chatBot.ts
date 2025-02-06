@@ -1,6 +1,5 @@
 import { data } from ".."
 import { ChatBotResponseMessage, ChatBotTable } from "../interface/chatBotTable"
-import { ConfigService } from "../service/ConfigService"
 
 export class ChatBot {
     api$chat = ''

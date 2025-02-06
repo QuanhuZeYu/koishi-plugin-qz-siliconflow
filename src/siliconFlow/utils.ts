@@ -1,7 +1,6 @@
 import { Context, Session } from "koishi"
 import { ChatBot, chatBots } from "./chatBot"
 import { data, Config } from ".."
-import { ConfigService } from "../service/ConfigService"
 
 
 export class ChatBotUtils {

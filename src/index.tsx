@@ -12,6 +12,9 @@ declare module 'koishi' {
     interface Channel {
         chatbot: ChatBotTable
     }
+    interface Context {
+        qz_siliconflow_config: ConfigService
+    }
 }
 
 export const name = 'qz-siliconflow'
