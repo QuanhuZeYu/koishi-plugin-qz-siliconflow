@@ -13,33 +13,39 @@ declare module 'koishi' {
 export class ConfigService extends Service {
     static SERVICE_NAME = `qz-siliconflow-configservice-v1`
 
-    constructor(ctx: any) {
+    constructor(ctx: Context) {
         super(ctx, ConfigService.SERVICE_NAME)
         this.ctx = ctx
         ctx.model.extend('channel', {
             chatbot: 'json',
         })
+        this.dynamicConfig()
     }
 
-    dynamicConfig(ctx: Context) {
-        const config: Config = ctx.config
-        const unionSchema = Schema.union(config.baseConfig.map(item => {
-            return Schema.object({
-                platform: Schema.string().default(item.platform.name).description('平台'),
-                apiEndpoint: Schema.string().default(item.platform.apiEndpoint).description('API地址'),
-                apiKey: Schema.string().default(item.platform.apiKey).role(`secret`).description('API密钥'),
-                modelId: Schema.string().default(item.modelId?.[0]).description('模型ID')
-            }).collapse(true).role(`group`)
-                .description(`${item?.platform.name}: ${item.modelId?.[0]}`)
-        }))
+    dynamicConfig() {
+        const ctx = data.ctx
+        const config: Config = data.ctx.config
+        const select = config.select
+        const unionSchema = Schema.union(
+            Object.entries(config.baseConfig).map(([key, value]) => {
+                const { modelId, apiEndpoint, apiKey, platform } = value
+                const schema = Schema.object({
+                    platform: Schema.const(platform).default(platform).description('平台').required(),
+                    apiEndpoint: Schema.const(apiEndpoint).default(apiEndpoint).description('API地址').required(),
+                    apiKey: Schema.const(apiKey).default(apiKey).role('secret').description('API密钥').required(),
+                    modelId: Schema.const(modelId).default(modelId).description('模型ID').required()
+                }).default({
+                    platform: platform,
+                    apiEndpoint: apiEndpoint,
+                    apiKey: apiKey,
+                    modelId: modelId
+                })
+                    .description(`${platform}: ${modelId}`)
+                return schema
+            })
+        )
         ctx.schema.set(`${ConfigService.SERVICE_NAME}`, unionSchema)
-        config.select = {
-            platform: config.baseConfig?.[0].platform.name,
-            apiEndpoint: config.baseConfig?.[0].platform.apiEndpoint,
-            apiKey: config.baseConfig?.[0].platform.apiKey,
-            modelId: config.baseConfig?.[0].modelId?.[0]
-        }
-        ctx.logger.info(`当前选择: { platform: ${config.select.platform}, apiEndpoint: ${config.select.apiEndpoint}, apiKey: ${Boolean(config.select.apiKey)}, modelId: ${config.select.modelId} }`)
+        ctx.logger.info(`当前选择: `, ctx.config.select)
     }
 
     static getApiEndpoint() {
@@ -104,5 +110,31 @@ export class ConfigService extends Service {
 
         // 更新系统提示
         data.config.perGuildConfig[channelId].systemPrompt = botSystemPrompt;
+    }
+
+    static async getModelList(ctx: Context) {
+        const apikey = ConfigService.getApiKey()
+        try {
+            const response = await fetch(`${ConfigService.getApiEndpoint()}/models`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apikey}`
+                }
+            })
+            // 处理HTTP错误状态
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API请求失败: ${response.status} ${response.statusText} - ${errorData.error?.message}`);
+            }
+            // 解析并断言响应类型
+            const data = await response.json() as ModelResponse
+            return data.data;
+        } catch (error) {
+            // 增强错误处理
+            if (error instanceof Error) {
+                throw new Error(`获取模型列表失败: ${error.message}`);
+            }
+            throw new Error('发生未知错误');
+        }
     }
 }

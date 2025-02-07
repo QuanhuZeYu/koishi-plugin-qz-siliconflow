@@ -26,14 +26,12 @@ export interface Config {
         apiKey?: string
         modelId?: string
     }
-    baseConfig: Array<{
-        platform?: {
-            name?: string
-            apiEndpoint?: string
-            apiKey?: string
-        }
-        modelId?: Array<string>
-    }>,
+    baseConfig: {
+        platform?: string
+        apiEndpoint?: string
+        apiKey?: string
+        modelId?: string
+    }[],
     detail: {
         systemPrompt?: string
         maxToken?: number
@@ -54,23 +52,14 @@ export interface Config {
 export const Config: Schema<Config> = Schema.intersect([
     Schema.object({
         select: Schema.dynamic(ConfigService.SERVICE_NAME)
-    }).description('服务选择呈现器'),
+    }).description('选择器，选择你需要的平台模型'),
     Schema.object({
-        baseConfig: Schema.array(
-            Schema.intersect([
-                Schema.object({
-                    platform: Schema.object({
-                        name: Schema.string().description('平台名称'),
-                        apiEndpoint: Schema.string().description('API地址'),
-                        apiKey: Schema.string().description('API Key'),
-
-                    }).collapse(true).role(`group`).description('平台配置'),
-                }).collapse(true).role(`group`),
-                Schema.object({
-                    modelId: Schema.array(Schema.string()).collapse(true).description('模型 ID'),
-                }).role(`table`).description('模型列表'),
-            ]).collapse(true).role(`group`).description("列表配置")
-        ).collapse(true).role(`group`)
+        baseConfig: Schema.array(Schema.object({
+            platform: Schema.string().description('平台'),
+            apiEndpoint: Schema.string().description('api地址'),
+            apiKey: Schema.string().description('apiKey'),
+            modelId: Schema.string().role(`select`).description('模型id'),
+        }).description(`平台名称`)).role(`table`)
     }).description('基础配置列表'),
     Schema.object({
         detail: Schema.object({
@@ -96,6 +85,7 @@ export const Config: Schema<Config> = Schema.intersect([
         perGuildConfig: Schema.array(
             Schema.object({
                 guildId: Schema.string().required().description('群组 ID'),
+                name: Schema.string().description('备注名称'),
                 systemPrompt: Schema.string().description('自定义系统提示词'),
             })
         ).collapse(true).role('table')
@@ -152,7 +142,7 @@ export async function apply(ctx: Context) {
     ctx.command('chat-models', '获取可用模型列表')
         .alias('qz-sf-models')
         .action(async (v, message) => {
-            const models = await getModelList(ctx)
+            const models = await ConfigService.getModelList(ctx)
             let stringBuilder: string = ''
             models.forEach(element => {
                 stringBuilder += element.id + '\n'
@@ -174,37 +164,11 @@ export async function apply(ctx: Context) {
     })
 
     ctx.on('config', () => {
+        ctx.logger.info(`重载后: `, ctx.config.select)
         ConfigService.onConfigChange()
+        // 动态更新选择器
+        // ctx.inject([`${ConfigService.SERVICE_NAME}`], ctx1 => {
+        //     ctx1['qz-siliconflow-configservice-v1'].dynamicConfig(ctx)
+        // })
     });
-
-    // 动态更新选择器
-    ctx.inject([`${ConfigService.SERVICE_NAME}`], ctx1 => {
-        ctx1['qz-siliconflow-configservice-v1'].dynamicConfig(ctx)
-    })
-}
-
-async function getModelList(ctx: Context) {
-    const apikey = ConfigService.getApiKey()
-    try {
-        const response = await fetch(`${ConfigService.getApiEndpoint()}/models`, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apikey}`
-            }
-        })
-        // 处理HTTP错误状态
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`API请求失败: ${response.status} ${response.statusText} - ${errorData.error?.message}`);
-        }
-        // 解析并断言响应类型
-        const data = await response.json() as ModelResponse
-        return data.data;
-    } catch (error) {
-        // 增强错误处理
-        if (error instanceof Error) {
-            throw new Error(`获取模型列表失败: ${error.message}`);
-        }
-        throw new Error('发生未知错误');
-    }
 }
