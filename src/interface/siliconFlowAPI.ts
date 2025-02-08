@@ -1,12 +1,12 @@
 // 定义消息类型
-interface Message {
+type Message = {
     role: 'user' | 'assistant' | 'system';
     content: string;
     reasoning_content?: string;
 }
 
 // 定义 API 请求参数类型
-interface ChatRequest {
+type ChatRequest = {
     model: string;
     messages: Message[];
     stream?: boolean;
@@ -15,7 +15,7 @@ interface ChatRequest {
 }
 
 // 定义 API 响应类型
-interface ChatResponse {
+type ChatResponse = {
     choices: {
         message: Message;
         finish_reason: string;
@@ -26,14 +26,14 @@ interface ChatResponse {
     };
 }
 
-interface Model {
+type Model = {
     id: string;
     object: string;
     created: number;
     owned_by: string;
 }
 
-interface ModelsResponse {
+type ModelsResponse = {
     data: Model[];
     object: string;
 }

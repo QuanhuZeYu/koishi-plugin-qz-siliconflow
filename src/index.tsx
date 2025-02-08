@@ -5,6 +5,8 @@ import { onMessageRecive } from './event/onMessageRecive'
 import { ChatBotUtils } from './siliconFlow/utils'
 import { ConfigService } from './service/ConfigService'
 import { platform } from 'os'
+import { TokenService } from './service/TokenService'
+import { KoishiChat } from './service/KoishiChat'
 
 export const inject = ['database'] // 添加这行声明依赖
 
@@ -101,43 +103,11 @@ export async function apply(ctx: Context) {
     data.ctx = ctx
     data.config = ctx.config
     ctx.plugin(ConfigService)
-    ctx.command('chat <message:text>', '与AI对话')
-        .alias('qz-sf')
-        .action(async (v, message) => {
-            const chatbot = await ChatBotUtils.getBot(v.session)
-            const userid = v.session.userId
-            const nickname = v.session.username
-            const messageSend = `${nickname}: ${message}`
-            const response = await chatbot.sendMessage(messageSend)
-            const forwardMessage = (
-                <message forward>
-                    <message>
-                        <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                        {response.commonResponse}
-                    </message>
-                    {/* 如果response.jsonResponse不为空，则发送jsonResponse */}
-                    {response.jsonResponse && (
-                        <message>
-                            <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                            {response.jsonResponse}
-                        </message>
-                    )}
-                </message>
-            )
-            await v.session.send(forwardMessage)
-            if (response.jsonResponse) {
-                await v.session.send(response.jsonResponse)
-            }
-        })
+    ctx.plugin(TokenService)
 
-    ctx.command('chat-clear', '清除聊天记录')
-        .alias('qz-sf-clear')
-        .action(async (v, message) => {
-            const bot = await ChatBotUtils.getBot(v.session)
-            const originLength = bot.history.length
-            bot.clearHistory()
-            await v.session.send(`清除了${originLength - 1}条聊天记录`)
-        })
+    KoishiChat.commandChat(ctx)
+    KoishiChat.commandChatClear(ctx)
+    KoishiChat.commandChatNH(ctx)
 
     ctx.command('chat-models', '获取可用模型列表')
         .alias('qz-sf-models')

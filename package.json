@@ -1,7 +1,7 @@
 {
   "name": "@quanhuzeyu/koishi-plugin-qz-siliconflow",
-  "description": "",
-  "version": "1.1.0",
+  "description": "koishi插件，支持openaiAPI格式的平台接入，如果你使用控制台将可以同时使用多个平台配置；支持分群组配置，为console界面深度优化，易于配置参数",
+  "version": "1.2.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -10,6 +10,9 @@
   ],
   "license": "MIT",
   "scripts": {
+    "build": "npm run _buildroot && npm run copyDir",
+    "_buildroot": "cd ../../ && npm run build",
+    "copyDir": "node copyDir.js",
     "pubgit": "npm publish --registry=https://npm.pkg.github.com",
     "pubnpm": "npm publish --access public --registry=https://registry.npmjs.org"
   },

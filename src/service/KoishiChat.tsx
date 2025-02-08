@@ -1,0 +1,124 @@
+import { Context } from "koishi";
+import { TokenService } from "./TokenService";
+import { ConfigService } from "./ConfigService";
+import { ChatBotUtils } from "../siliconFlow/utils";
+
+export class KoishiChat {
+
+    static commandChat(ctx: Context) {
+        ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
+            // region commandChat
+            ctx.command('chat <message:text>', '与AI对话')
+                .alias('qz-sf')
+                .action(async (v, message) => {
+                    const chatbot = await ChatBotUtils.getBot(v.session)
+                    const userid = v.session.userId
+                    const nickname = v.session.username
+                    const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
+                    if (!ctx.qz_siliconflow_tokenservice.checkUserToken(userid)) {
+                        // const remainToken = userInfo?.maxToken - userInfo?.useToken
+                        return await v.session.send(`${nickname}: token用量达到上限`)
+                    }
+                    const response = await chatbot.sendMessageWithHistory(messageSend)
+                    // 更新用量
+                    const useInfo = response.useInfo
+                    const totalUse = useInfo?.totalTokens
+                    const user = await ctx.qz_siliconflow_tokenservice.getUser(v.session.userId)
+                    if (totalUse) {
+                        ctx.qz_siliconflow_tokenservice.addUserUseToken(v.session.userId, totalUse)
+                    }
+                    const forwardMessage = (
+                        <message forward >
+                            <message>
+                                <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                {`额度: ${user?.maxToken - user?.useToken}, 当前使用额度: ${user?.useToken + totalUse}, 剩余: ${user?.maxToken - user?.useToken - totalUse}`}
+                            </message>
+                            <message>
+                                <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                {response.commonResponse}
+                            </message>
+                            {/* 如果response.jsonResponse不为空，则发送jsonResponse */}
+                            {
+                                response.jsonResponse && (
+                                    <message>
+                                        <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                        {response.jsonResponse}
+                                    </message>
+                                )
+                            }
+                        </message>
+                    )
+                    await v.session.send(forwardMessage)
+                    if (response.jsonResponse) {
+                        await v.session.send(response.jsonResponse)
+                    }
+
+                })
+            // endregion
+        })
+    }
+
+    static commandChatNH(ctx: Context) {
+        ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
+            // region commandChat
+            ctx.command('chatnh <message:text>', '与AI对话_nh--NoHistory无历史记录单聊')
+                .alias('qz-sf-nh')
+                .action(async (v, message) => {
+                    const chatbot = await ChatBotUtils.getBot(v.session)
+                    const userid = v.session.userId
+                    const nickname = v.session.username
+                    const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
+                    if (!ctx.qz_siliconflow_tokenservice.checkUserToken(userid)) {
+                        // const remainToken = userInfo?.maxToken - userInfo?.useToken
+                        return await v.session.send(`${nickname}: token用量达到上限`)
+                    }
+                    const response = await chatbot.sendMessage(messageSend)
+                    // 更新用量
+                    const useInfo = response.useInfo
+                    const totalUse = useInfo?.totalTokens
+                    const user = await ctx.qz_siliconflow_tokenservice.getUser(v.session.userId)
+                    if (totalUse) {
+                        ctx.qz_siliconflow_tokenservice.addUserUseToken(v.session.userId, totalUse)
+                    }
+                    const forwardMessage = (
+                        <message forward >
+                            <message>
+                                <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                {`额度: ${user?.maxToken - user?.useToken}, 当前使用额度: ${user?.useToken + totalUse}, 剩余: ${user?.maxToken - user?.useToken - totalUse}`}
+                            </message>
+                            <message>
+                                <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                {response.commonResponse}
+                            </message>
+                            {/* 如果response.jsonResponse不为空，则发送jsonResponse */}
+                            {
+                                response.jsonResponse && (
+                                    <message>
+                                        <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                        {response.jsonResponse}
+                                    </message>
+                                )
+                            }
+                        </message>
+                    )
+                    await v.session.send(forwardMessage)
+                    if (response.jsonResponse) {
+                        await v.session.send(response.jsonResponse)
+                    }
+
+                })
+            // endregion
+        })
+    }
+
+    static commandChatClear(ctx: Context) {
+        ctx.command('chat-clear', '清除聊天记录')
+            .alias('qz-sf-clear')
+            .action(async (v, message) => {
+                const bot = await ChatBotUtils.getBot(v.session)
+                const originLength = bot.history.length
+                bot.clearHistory()
+                await v.session.send(`清除了${originLength - 1}条聊天记录`)
+            })
+    }
+}
