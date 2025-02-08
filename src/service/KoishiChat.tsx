@@ -5,11 +5,14 @@ import { ChatBotUtils } from "../siliconFlow/utils";
 
 export class KoishiChat {
 
+    static COMMAND_CHAT = 'chat'
+    static COMMAND_CHAT_NOHISTORY = 'chatnh'
+    static COMMAND_CHAT_CLEAR = 'chat-clear'
+
     static commandChat(ctx: Context) {
         ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
             // region commandChat
-            ctx.command('chat <message:text>', '与AI对话')
-                .alias('qz-sf')
+            ctx.command(`${this.COMMAND_CHAT} <message:text>`, '与AI对话')
                 .action(async (v, message) => {
                     const chatbot = await ChatBotUtils.getBot(v.session)
                     const userid = v.session.userId
@@ -31,7 +34,7 @@ export class KoishiChat {
                         <message forward >
                             <message>
                                 <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                                {`额度: ${user?.maxToken - user?.useToken}, 当前使用额度: ${user?.useToken + totalUse}, 剩余: ${user?.maxToken - user?.useToken - totalUse}`}
+                                {`剩余额度: ${user.remain - totalUse}`}
                             </message>
                             <message>
                                 <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
@@ -61,7 +64,7 @@ export class KoishiChat {
     static commandChatNH(ctx: Context) {
         ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
             // region commandChat
-            ctx.command('chatnh <message:text>', '与AI对话_nh--NoHistory无历史记录单聊')
+            ctx.command(`${this.COMMAND_CHAT_NOHISTORY} <message:text>`, '与AI对话_nh--NoHistory无历史记录单聊')
                 .alias('qz-sf-nh')
                 .action(async (v, message) => {
                     const chatbot = await ChatBotUtils.getBot(v.session)
@@ -112,7 +115,7 @@ export class KoishiChat {
     }
 
     static commandChatClear(ctx: Context) {
-        ctx.command('chat-clear', '清除聊天记录')
+        ctx.command(`${this.COMMAND_CHAT_CLEAR}`, '清除聊天记录')
             .alias('qz-sf-clear')
             .action(async (v, message) => {
                 const bot = await ChatBotUtils.getBot(v.session)
