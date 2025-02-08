@@ -9,6 +9,7 @@ declare module "koishi" {
             userId: string
             useToken: number
             maxToken: number
+            remain: number
         }
     }
 }
@@ -28,6 +29,7 @@ export class TokenService extends Service {
             userId: 'string',
             useToken: 'decimal',
             maxToken: 'decimal',
+            remain: 'decimal'
         }, {
             primary: 'userId',
             autoInc: false
@@ -50,7 +52,7 @@ export class TokenService extends Service {
             return user[0]
         } else {
             // 如果不存在，则插入一条记录
-            user = [{ userId: userId, useToken: 0, maxToken: 10_000 }]
+            user = [{ userId: userId, useToken: 0, maxToken: 10_000, remain: 10_000 }]
             await this.ctx.database.upsert(`qz_siliconflow`, user)
             return user[0]
         }
@@ -58,19 +60,26 @@ export class TokenService extends Service {
 
     async updateUser(userId: string, useToken?: number, maxToken?: number) {
         let user = await this.getUser(userId)
-        user = { userId: userId, useToken: useToken ?? user.useToken, maxToken: maxToken ?? user.maxToken }
+        const oldUse = user.useToken
+        const oldMax = user.maxToken
+        const oldRem = user.remain
+        const newUse = useToken ?? oldUse
+        const newMax = maxToken ?? oldMax
+        const newRem = newMax - newUse
+        user = { userId: userId, useToken: newUse, maxToken: newMax, remain: newRem }
         await this.ctx.database.upsert(`qz_siliconflow`, [user])
     }
 
     async checkUserToken(userId: string) {
         const user = await this.getUser(userId)
-        const { useToken, maxToken } = user
-        return useToken < maxToken
+        const { remain } = user
+        return remain > 0
     }
 
     async addUserUseToken(userId: string, useToken: number) {
         const user = await this.getUser(userId)
         user.useToken += useToken
+        user.remain -= useToken
         await this.ctx.database.upsert(`qz_siliconflow`, [user])
     }
 }
