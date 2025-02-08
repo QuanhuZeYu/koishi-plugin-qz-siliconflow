@@ -6,37 +6,38 @@ import { ConfigService } from "../service/ConfigService"
 
 export class ChatBotUtils {
     static async getBot(session: Session): Promise<ChatBot> {
-        const { channelId, platform } = session
+        const { guildId, platform } = session
         // 尝试从内存缓存获取
-        const cachedBot = chatBots.get(channelId)
+        const cachedBot = chatBots.get(guildId)
         if (cachedBot) return cachedBot
 
         // 尝试从数据库恢复
-        const restoredBot = await ChatBotUtils.tryRestoreFromDB(channelId, platform)
+        const restoredBot = await ChatBotUtils.tryRestoreFromDB(guildId, platform)
         if (restoredBot) {
-            chatBots.set(channelId, restoredBot)
+            chatBots.set(guildId, restoredBot)
             return restoredBot
         }
 
         // 创建新实例
-        return ChatBotUtils.createNewBot(channelId, platform)
+        return ChatBotUtils.createNewBot(guildId, platform)
     }
 
-    static async tryRestoreFromDB(channelId: string, platform: string): Promise<ChatBot | null> {
+    static async tryRestoreFromDB(guildId: string, platform: string): Promise<ChatBot | null> {
         try {
-            const [channel] = await data.ctx.database.get('channel', {
-                id: channelId,
+            // 寻找匹配的记录
+            const [guildIdFind] = await data.ctx.database.get('channel', {
+                id: guildId,
                 platform: platform,
             })
 
-            if (!channel?.chatbot?.history) return null
+            if (!guildIdFind?.chatbot?.history) return null
 
-            const { history } = channel.chatbot
+            const { history } = guildIdFind.chatbot
             const bot = ChatBotUtils.createBotInstance()
 
             if (history?.length > 1)
                 bot.history = history
-            ChatBotUtils.configureSystemPrompt(bot, channelId)
+            ChatBotUtils.configureSystemPrompt(bot, guildId)
 
             return bot
         } catch (error) {
@@ -45,11 +46,11 @@ export class ChatBotUtils {
         }
     }
 
-    static createNewBot(channelId: string, platform: string): ChatBot {
+    static createNewBot(guildId: string, platform: string): ChatBot {
         const bot = ChatBotUtils.createBotInstance()
-        ChatBotUtils.configureSystemPrompt(bot, channelId)
-        ChatBotUtils.persistBotToDB(bot, channelId, platform)
-        chatBots.set(channelId, bot)
+        ChatBotUtils.configureSystemPrompt(bot, guildId)
+        ChatBotUtils.persistBotToDB(bot, guildId, platform)
+        chatBots.set(guildId, bot)
         return bot
     }
 
@@ -60,22 +61,22 @@ export class ChatBotUtils {
      * 2. 历史记录中第一个消息
      * 3. 默认值
      * @param bot 
-     * @param channelId 
+     * @param guildId 
      */
-    static configureSystemPrompt(bot: ChatBot, channelId: string) {
+    static configureSystemPrompt(bot: ChatBot, guildId: string) {
         const config = data.config
-        const perGuildPrompt = config.perGuildConfig.find(item => item.guildId === channelId)?.systemPrompt
+        const perGuildPrompt = config.perGuildConfig.find(item => item?.guildId === guildId)?.systemPrompt
         const botGuildPrompt = bot.getSystemPrompt()
         const globalPrompt = ConfigService.getSystemPrompt()
-        const systemPrompt = perGuildPrompt ?? botGuildPrompt ?? globalPrompt
+        const systemPrompt = perGuildPrompt || botGuildPrompt || globalPrompt
 
         bot.setSystemPrompt(
-            ChatBotUtils.replaceSystemPrompt(systemPrompt, channelId)
+            ChatBotUtils.replaceSystemPrompt(systemPrompt, guildId)
         )
     }
 
-    static replaceSystemPrompt(template: string, channelId: string) {
-        return template.replace('【channelId】', `[${channelId}]`)
+    static replaceSystemPrompt(template: string, guildId: string) {
+        return template.replace('【guildId】', `[${guildId}]`)
     }
 
     static createBotInstance(): ChatBot {
@@ -87,18 +88,18 @@ export class ChatBotUtils {
         )
     }
 
-    static async persistBotToDB(bot: ChatBot, channelId: string, platform: string) {
+    static async persistBotToDB(bot: ChatBot, guildId: string, platform: string) {
         try {
             await data.ctx.database.set('channel',
-                { id: channelId, platform },
+                { id: guildId, platform },
                 {
                     chatbot: {
-                        guildId: channelId,
+                        guildId: guildId,
                         history: bot.history,
                     }
                 }
             )
-            data.ctx.logger.info(`成功持久化 ${channelId} 的对话机器人`)
+            data.ctx.logger.info(`成功持久化 ${guildId} 的对话机器人`)
         } catch (error) {
             data.ctx.logger.warn(`数据库写入失败: ${error.message}`)
         }

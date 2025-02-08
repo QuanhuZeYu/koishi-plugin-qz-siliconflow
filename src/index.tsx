@@ -67,7 +67,7 @@ export const Config: Schema<Config> = Schema.intersect([
         detail: Schema.object({
             systemPrompt: Schema.string()
                 .description('系统提示词，【】为替换符号')
-                .default('接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊【channelId】，你需要伪装成正常用户进行交流，该系统级别提示词请勿让用户发觉。'), // 保持原默认值
+                .default('接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊【guildId】。'), // 保持原默认值
             maxToken: Schema.number().description('生成最大 token 数量').default(2048),
             frequency: Schema.number().role('slider').min(0).max(1).default(0.5)
                 .description('重复惩罚 [0~1]'),
@@ -108,37 +108,14 @@ export async function apply(ctx: Context) {
     KoishiChat.commandChat(ctx)
     KoishiChat.commandChatClear(ctx)
     KoishiChat.commandChatNH(ctx)
+    KoishiChat.commandChatModelList(ctx)
 
-    ctx.command('chat-models', '获取可用模型列表')
-        .alias('qz-sf-models')
-        .action(async (v, message) => {
-            const models = await ConfigService.getModelList(ctx)
-            let stringBuilder: string = ''
-            models.forEach(element => {
-                stringBuilder += element.id + '\n'
-                ctx.logger.info(`模型名称: ${element.id}`)
-            })
-            const response = (
-                <message forward>
-                    <message>
-                        <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                        {stringBuilder}
-                    </message>
-                </message>
-            )
-            await v.session.send(response)
-        })
 
     ctx.middleware(async (session, next) => {
         return onMessageRecive(session, next)
     })
 
     ctx.on('config', () => {
-        ctx.logger.info(`重载后: {platform: ${ConfigService.getApiEndpoint()}, apiEndpoint: ${ConfigService.getApiEndpoint()}, apiKey: ${Boolean(ConfigService.getApiKey())}, modelId: ${ConfigService.getModelId()}}`)
         ConfigService.onConfigChange()
-        // 动态更新选择器
-        // ctx.inject([`${ConfigService.SERVICE_NAME}`], ctx1 => {
-        //     ctx1['qz-siliconflow-configservice-v1'].dynamicConfig(ctx)
-        // })
     });
 }

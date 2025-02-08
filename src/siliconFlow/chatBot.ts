@@ -41,11 +41,10 @@ export class ChatBot {
     }
 
     public getSystemPrompt(): string | undefined {
-        const prompt = this.history[0].content
+        const prompt = this.history[0]
         try {
-            const jsonObject = JSON.parse(prompt) as Message
-            if (jsonObject?.role === 'system') {
-                return jsonObject.content
+            if (prompt?.role === 'system') {
+                return prompt.content
             } else {
                 return undefined
             }

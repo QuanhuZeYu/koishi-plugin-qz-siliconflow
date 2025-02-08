@@ -45,7 +45,7 @@ export class ConfigService extends Service {
             })
         )
         ctx.schema.set(`${ConfigService.SERVICE_NAME}`, unionSchema)
-        ctx.logger.info(`当前选择: `, ctx.config.select)
+        ctx.logger.info(`当前选择: { platform: `, select.platform, `, apiEndpoint: `, select.apiEndpoint, `, apiKey: `, Boolean(select.apiKey), `, modelId: `, select.modelId, ` }`)
     }
 
     static getPlatform() {
@@ -77,8 +77,8 @@ export class ConfigService extends Service {
         return config.detail?.maxHistory
     }
     static getSystemPrompt() {
-        const config: Config = data.ctx.config
-        return config.detail?.systemPrompt
+        const prompt = data?.ctx.config.detail?.systemPrompt || `接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊【guildId】。`
+        return prompt
     }
 
     static async onConfigChange() {
@@ -87,33 +87,33 @@ export class ConfigService extends Service {
         data.config = data.ctx.config;
 
         // 更新对话实例
-        chatBots.forEach((bot, channelId) => {
+        chatBots.forEach((bot, guildId) => {
             bot.api$chat = ConfigService.getApiEndpoint() + `/chat/completions`;
             bot.apiKey = ConfigService.getApiKey();
             bot.model = ConfigService.getModelId();
-            ChatBotUtils.configureSystemPrompt(bot, channelId);
+            ChatBotUtils.configureSystemPrompt(bot, guildId);
             bot.maxtokens = ConfigService.getMaxToken()
             bot.temperature = ConfigService.getTemperature()
-            this.updateConfigSystemPrompt(bot, channelId);
+            this.updateConfigSystemPrompt(bot, guildId);
         });
 
         logger.info(`缓存对话实例已更新完毕`);
     }
-    static async updateConfigSystemPrompt(bot: ChatBot, channelId: string) {
+    static async updateConfigSystemPrompt(bot: ChatBot, guildId: string) {
         const logger = data.ctx.logger;
         const config = data.config;
         // 获取系统提示，优先使用 bot.history 中的内容
         const botSystemPrompt = bot.history?.[0]?.content ?? ConfigService.getSystemPrompt();
 
         // 确保 guildId 存在
-        if (!config.perGuildConfig[channelId]) {
-            config.perGuildConfig[channelId] = {};
+        if (!config.perGuildConfig[guildId]) {
+            config.perGuildConfig[guildId] = {};
         }
 
-        logger.info(`${channelId} 的系统提示已更新为：${botSystemPrompt}`);
+        logger.info(`${guildId} 的系统提示已更新为：${botSystemPrompt}`);
 
         // 更新系统提示
-        data.config.perGuildConfig[channelId].systemPrompt = botSystemPrompt;
+        data.config.perGuildConfig[guildId].systemPrompt = botSystemPrompt;
     }
 
     static async getModelList(ctx: Context) {

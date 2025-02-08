@@ -114,6 +114,28 @@ export class KoishiChat {
         })
     }
 
+    static commandChatModelList(ctx: Context) {
+        ctx.command('chat-models', '获取可用模型列表')
+            .alias('qz-sf-models')
+            .action(async (v, message) => {
+                const models = await ConfigService.getModelList(ctx)
+                let stringBuilder: string = ''
+                models.forEach(element => {
+                    stringBuilder += element.id + '\n'
+                    ctx.logger.info(`模型名称: ${element.id}`)
+                })
+                const response = (
+                    <message forward>
+                        <message>
+                            <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                            {stringBuilder}
+                        </message>
+                    </message>
+                )
+                await v.session.send(response)
+            })
+    }
+
     static commandChatClear(ctx: Context) {
         ctx.command(`${this.COMMAND_CHAT_CLEAR}`, '清除聊天记录')
             .alias('qz-sf-clear')
