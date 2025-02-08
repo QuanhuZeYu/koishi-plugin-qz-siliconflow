@@ -134,7 +134,7 @@ export async function apply(ctx: Context) {
     })
 
     ctx.on('config', () => {
-        ctx.logger.info(`重载后: `, ctx.config.select)
+        ctx.logger.info(`重载后: {platform: ${ConfigService.getApiEndpoint()}, apiEndpoint: ${ConfigService.getApiEndpoint()}, apiKey: ${Boolean(ConfigService.getApiKey())}, modelId: ${ConfigService.getModelId()}}`)
         ConfigService.onConfigChange()
         // 动态更新选择器
         // ctx.inject([`${ConfigService.SERVICE_NAME}`], ctx1 => {

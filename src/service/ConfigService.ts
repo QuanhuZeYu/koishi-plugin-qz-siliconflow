@@ -48,6 +48,10 @@ export class ConfigService extends Service {
         ctx.logger.info(`当前选择: `, ctx.config.select)
     }
 
+    static getPlatform() {
+        const config: Config = data.ctx.config
+        return config.select?.platform
+    }
     static getApiEndpoint() {
         const config: Config = data.ctx.config
         return config.select?.apiEndpoint
@@ -88,8 +92,8 @@ export class ConfigService extends Service {
             bot.apiKey = ConfigService.getApiKey();
             bot.model = ConfigService.getModelId();
             ChatBotUtils.configureSystemPrompt(bot, channelId);
-            bot.maxtokens = data.config.detail.maxToken;
-            bot.temperature = data.config.detail.temperature;
+            bot.maxtokens = ConfigService.getMaxToken()
+            bot.temperature = ConfigService.getTemperature()
             this.updateConfigSystemPrompt(bot, channelId);
         });
 

@@ -63,12 +63,11 @@ export class ChatBotUtils {
      * @param channelId 
      */
     static configureSystemPrompt(bot: ChatBot, channelId: string) {
-        const logger = data.ctx.logger
         const config = data.config
-        const systemPrompt =
-            config.perGuildConfig[channelId]?.systemPrompt || // 优先级 1：从频道配置中获取
-            (bot?.history?.[0]?.content || undefined) ||     // 优先级 2：从 bot 历史记录中获取
-            ConfigService.getSystemPrompt()                // 优先级 3：从基础配置中获取
+        const perGuildPrompt = config.perGuildConfig.find(item => item.guildId === channelId)?.systemPrompt
+        const botGuildPrompt = bot.getSystemPrompt()
+        const globalPrompt = ConfigService.getSystemPrompt()
+        const systemPrompt = perGuildPrompt ?? botGuildPrompt ?? globalPrompt
 
         bot.setSystemPrompt(
             ChatBotUtils.replaceSystemPrompt(systemPrompt, channelId)

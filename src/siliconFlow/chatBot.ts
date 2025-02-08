@@ -40,8 +40,19 @@ export class ChatBot {
         });
     }
 
-    public getSystemPrompt() {
-        return this.history[0].content
+    public getSystemPrompt(): string | undefined {
+        const prompt = this.history[0].content
+        try {
+            const jsonObject = JSON.parse(prompt) as Message
+            if (jsonObject?.role === 'system') {
+                return jsonObject.content
+            } else {
+                return undefined
+            }
+        } catch (error) {
+            data.ctx.logger.warn(`解析系统提示失败: ${error.message}`)
+            return undefined
+        }
     }
 
     public addUserPrompt(prompt: string) {
