@@ -2,7 +2,6 @@ import { Context, Schema, Service } from "koishi"
 import { platform } from "os"
 import { Config, data } from ".."
 import { ChatBot, chatBots } from "../siliconFlow/chatBot"
-import { ChatBotUtils } from "../siliconFlow/utils"
 
 
 declare module 'koishi' {
@@ -86,34 +85,22 @@ export class ConfigService extends Service {
         const logger = data.ctx.logger;
         data.config = data.ctx.config;
 
-        // 更新对话实例
-        chatBots.forEach((bot, guildId) => {
+        // 更新对话实例（异步并行版本）
+        await Promise.all(Array.from(chatBots.entries()).map(async ([guildId, bot]) => {
+            // 同步操作
             bot.api$chat = ConfigService.getApiEndpoint() + `/chat/completions`;
             bot.apiKey = ConfigService.getApiKey();
             bot.model = ConfigService.getModelId();
-            ChatBotUtils.configureSystemPrompt(bot, guildId);
-            bot.maxtokens = ConfigService.getMaxToken()
-            bot.temperature = ConfigService.getTemperature()
-            this.updateConfigSystemPrompt(bot, guildId);
-        });
+            bot.maxtokens = ConfigService.getMaxToken();
+            bot.temperature = ConfigService.getTemperature();
+
+            // 并行执行异步操作（如果配置方法中有异步操作）
+            await Promise.all([
+                ChatBot.configureSystemPrompt(bot, guildId),
+            ]);
+        }));
 
         logger.info(`缓存对话实例已更新完毕`);
-    }
-    static async updateConfigSystemPrompt(bot: ChatBot, guildId: string) {
-        const logger = data.ctx.logger;
-        const config = data.config;
-        // 获取系统提示，优先使用 bot.history 中的内容
-        const botSystemPrompt = bot.history?.[0]?.content ?? ConfigService.getSystemPrompt();
-
-        // 确保 guildId 存在
-        if (!config.perGuildConfig[guildId]) {
-            config.perGuildConfig[guildId] = {};
-        }
-
-        logger.info(`${guildId} 的系统提示已更新为：${botSystemPrompt}`);
-
-        // 更新系统提示
-        data.config.perGuildConfig[guildId].systemPrompt = botSystemPrompt;
     }
 
     static async getModelList(ctx: Context) {

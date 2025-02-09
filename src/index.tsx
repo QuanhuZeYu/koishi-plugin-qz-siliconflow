@@ -2,7 +2,6 @@ import { Context, Dict, h, Schema, segment, Session } from 'koishi'
 import { ChatBot, chatBots } from './siliconFlow/chatBot'
 import { ChatBotTable } from './interface/chatBotTable'
 import { onMessageRecive } from './event/onMessageRecive'
-import { ChatBotUtils } from './siliconFlow/utils'
 import { ConfigService } from './service/ConfigService'
 import { platform } from 'os'
 import { TokenService } from './service/TokenService'
@@ -115,7 +114,7 @@ export async function apply(ctx: Context) {
         return onMessageRecive(session, next)
     })
 
-    ctx.on('config', () => {
+    ctx.on('config', async () => {
         ConfigService.onConfigChange()
     });
 }

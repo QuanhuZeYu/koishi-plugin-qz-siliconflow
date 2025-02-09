@@ -1,7 +1,7 @@
 import { Context } from "koishi";
 import { TokenService } from "./TokenService";
 import { ConfigService } from "./ConfigService";
-import { ChatBotUtils } from "../siliconFlow/utils";
+import { ChatBot } from "../siliconFlow/chatBot";
 
 export class KoishiChat {
 
@@ -14,7 +14,7 @@ export class KoishiChat {
             // region commandChat
             ctx.command(`${this.COMMAND_CHAT} <message:text>`, '与AI对话')
                 .action(async (v, message) => {
-                    const chatbot = await ChatBotUtils.getBot(v.session)
+                    const chatbot = await ChatBot.getBot(v.session)
                     const userid = v.session.userId
                     const nickname = v.session.username
                     const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
@@ -67,7 +67,7 @@ export class KoishiChat {
             ctx.command(`${this.COMMAND_CHAT_NOHISTORY} <message:text>`, '与AI对话_nh--NoHistory无历史记录单聊')
                 .alias('qz-sf-nh')
                 .action(async (v, message) => {
-                    const chatbot = await ChatBotUtils.getBot(v.session)
+                    const chatbot = await ChatBot.getBot(v.session)
                     const userid = v.session.userId
                     const nickname = v.session.username
                     const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
@@ -140,7 +140,7 @@ export class KoishiChat {
         ctx.command(`${this.COMMAND_CHAT_CLEAR}`, '清除聊天记录')
             .alias('qz-sf-clear')
             .action(async (v, message) => {
-                const bot = await ChatBotUtils.getBot(v.session)
+                const bot = await ChatBot.getBot(v.session)
                 const originLength = bot.history.length
                 bot.clearHistory()
                 await v.session.send(`清除了${originLength - 1}条聊天记录`)

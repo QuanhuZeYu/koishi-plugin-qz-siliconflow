@@ -1,3 +1,4 @@
+import { Session } from "koishi"
 import { data } from ".."
 import { ChatBotResponseMessage, ChatBotTable } from "../interface/chatBotTable"
 import { ConfigService } from "../service/ConfigService"
@@ -199,6 +200,107 @@ export class ChatBot {
                     totalTokens: totalUsage,
                 }
             }
+        }
+    }
+
+
+    static async getBot(session: Session): Promise<Promise<ChatBot>> {
+        const { guildId, platform } = session
+        // 尝试从内存缓存获取
+        const cachedBot = chatBots.get(guildId)
+        if (cachedBot) return cachedBot
+
+        // 尝试从数据库恢复
+        const restoredBot = await ChatBot.tryRestoreFromDB(guildId, platform)
+        if (restoredBot) {
+            chatBots.set(guildId, restoredBot)
+            return restoredBot
+        }
+
+        // 创建新实例
+        return ChatBot.createNewBot(guildId, platform)
+    }
+
+    static async tryRestoreFromDB(guildId: string, platform: string): Promise<ChatBot | null> {
+        try {
+            // 寻找匹配的记录
+            const [guildIdFind] = await data.ctx.database.get('channel', {
+                id: guildId,
+                platform: platform,
+            })
+
+            if (!guildIdFind?.chatbot?.history) return null
+
+            const { history } = guildIdFind.chatbot
+            const bot = await ChatBot.createBotInstance()
+
+            if (history?.length > 1)
+                bot.history = history
+            ChatBot.configureSystemPrompt(bot, guildId)
+
+            return bot
+        } catch (error) {
+            data.ctx.logger.warn(`数据库查询失败: ${error.message}`)
+            return null
+        }
+    }
+
+    static async createNewBot(guildId: string, platform: string): Promise<ChatBot> {
+        const bot = await ChatBot.createBotInstance()
+        ChatBot.configureSystemPrompt(bot, guildId)
+        ChatBot.persistBotToDB(bot, guildId, platform)
+        chatBots.set(guildId, bot)
+        return bot
+    }
+
+    /**
+     * 更新实例中的系统提示词
+     * 优先级:
+     * 1. 配置表
+     * 2. 历史记录中第一个消息
+     * 3. 默认值
+     * @param bot 
+     * @param guildId 
+     */
+    static async configureSystemPrompt(bot: ChatBot, guildId: string) {
+        const config = data.config
+        const perGuildPrompt = config.perGuildConfig.find(item => item?.guildId === guildId)?.systemPrompt
+        const botGuildPrompt = bot.getSystemPrompt()
+        const globalPrompt = ConfigService.getSystemPrompt()
+        const systemPrompt = perGuildPrompt || botGuildPrompt || globalPrompt
+
+        bot.setSystemPrompt(
+            ChatBot.replaceSystemPrompt(systemPrompt, guildId)
+        )
+    }
+
+    static replaceSystemPrompt(template: string, guildId: string) {
+        return template.replace('【guildId】', `[${guildId}]`)
+    }
+
+    static async createBotInstance(): Promise<ChatBot> {
+        return new ChatBot(
+            ConfigService.getApiEndpoint(),
+            ConfigService.getApiKey(),
+            ConfigService.getModelId(),
+            data.ctx.logger
+        )
+    }
+
+    static async persistBotToDB(bot: ChatBot, guildId: string, platform: string) {
+        try {
+            await data.ctx.database.set('channel',
+                { id: guildId, platform },
+                {
+                    chatbot: {
+                        guildId: guildId,
+                        history: bot.history,
+                    }
+                }
+            )
+            data.ctx.logger.info(`成功持久化 ${guildId} 的对话机器人`)
+        } catch (error) {
+            data.ctx.logger.warn(`数据库写入失败: ${error.message}`)
         }
     }
 }
