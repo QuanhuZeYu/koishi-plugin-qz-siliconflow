@@ -75,9 +75,30 @@ export class ConfigService extends Service {
         const config: Config = data.ctx.config
         return config.detail?.maxHistory
     }
-    static getSystemPrompt() {
-        const prompt = data?.ctx.config.detail?.systemPrompt || `接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊【guildId】。`
-        return prompt
+    static getSystemPrompt(guildId?: string) {
+        // 使用空值合并运算符(??)替代逻辑或(||)以保留空字符串值
+        const getFallbackPrompt = () =>
+            this.replaceMarket(data?.ctx?.config?.detail?.systemPrompt, guildId)
+        // 安全访问对象属性
+        const findGuildPrompt = () => {
+            try {
+                return this.replaceMarket(data?.config?.perGuildConfig
+                    ?.find(item => item?.guildId === guildId)
+                    ?.systemPrompt, guildId)
+            } catch {
+                return undefined;
+            }
+        };
+
+        // 显式处理优先级逻辑
+        if (guildId) {
+            return findGuildPrompt() ?? getFallbackPrompt();
+        }
+        return getFallbackPrompt();
+    }
+    static replaceMarket(prompt: string, guildId?: string) {
+        // 找到 $guilId 替换为 guildId
+        return prompt.replace('$guildId', guildId);
     }
 
     static async onConfigChange() {
@@ -96,9 +117,9 @@ export class ConfigService extends Service {
 
             // 并行执行异步操作（如果配置方法中有异步操作）
             await Promise.all([
-                ChatBot.configureSystemPrompt(bot, guildId),
-            ]);
-        }));
+                bot.setSystemPrompt(ConfigService.getSystemPrompt(guildId)),
+            ])
+        }))
 
         logger.info(`缓存对话实例已更新完毕`);
     }

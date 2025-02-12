@@ -11,16 +11,16 @@ export class KoishiChat {
 
     static commandChat(ctx: Context) {
         ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
-            // region commandChat
+            // region command Chat
             ctx.command(`${this.COMMAND_CHAT} <message:text>`, '与AI对话')
                 .action(async (v, message) => {
                     const chatbot = await ChatBot.getBot(v.session)
                     const userid = v.session.userId
                     const nickname = v.session.username
                     const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
-                    if (!ctx.qz_siliconflow_tokenservice.checkUserToken(userid)) {
+                    if (await ctx.qz_siliconflow_tokenservice.checkUserToken(userid) === false) {
                         // const remainToken = userInfo?.maxToken - userInfo?.useToken
-                        return await v.session.send(`${nickname}: token用量达到上限`)
+                        return await v.session.send(`{${nickname}}: token用量达到上限`)
                     }
                     const response = await chatbot.sendMessageWithHistory(messageSend)
                     // 更新用量
@@ -41,14 +41,12 @@ export class KoishiChat {
                                 {response.commonResponse}
                             </message>
                             {/* 如果response.jsonResponse不为空，则发送jsonResponse */}
-                            {
-                                response.jsonResponse && (
-                                    <message>
-                                        <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                                        {response.jsonResponse}
-                                    </message>
-                                )
-                            }
+                            {response.jsonResponse && (
+                                <message>
+                                    <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                    {response.jsonResponse}
+                                </message>
+                            )}
                         </message>
                     )
                     await v.session.send(forwardMessage)
@@ -63,7 +61,7 @@ export class KoishiChat {
 
     static commandChatNH(ctx: Context) {
         ctx.inject([TokenService.SERVICE_NAME, ConfigService.SERVICE_NAME], ctx => {
-            // region commandChat
+            // region command Chat-clear
             ctx.command(`${this.COMMAND_CHAT_NOHISTORY} <message:text>`, '与AI对话_nh--NoHistory无历史记录单聊')
                 .alias('qz-sf-nh')
                 .action(async (v, message) => {
@@ -115,6 +113,7 @@ export class KoishiChat {
     }
 
     static commandChatModelList(ctx: Context) {
+        // region command Chat-models
         ctx.command('chat-models', '获取可用模型列表')
             .alias('qz-sf-models')
             .action(async (v, message) => {
@@ -134,9 +133,11 @@ export class KoishiChat {
                 )
                 await v.session.send(response)
             })
+        // endregion
     }
 
     static commandChatClear(ctx: Context) {
+        // region command Chat-clear
         ctx.command(`${this.COMMAND_CHAT_CLEAR}`, '清除聊天记录')
             .alias('qz-sf-clear')
             .action(async (v, message) => {
@@ -145,5 +146,23 @@ export class KoishiChat {
                 bot.clearHistory()
                 await v.session.send(`清除了${originLength - 1}条聊天记录`)
             })
+        // endregion
+    }
+
+    static onPoke(ctx: Context) {
+        ctx.on(`internal/listener`, (name, listener, prepend) => {
+
+        })
+    }
+
+    static collectMessage(ctx: Context) {
+        ctx.middleware(async (session, next) => {
+            if (session.userId === session.bot.userId) return next() // 跳过机器人消息
+            // 获取群聊实例的 chatbot
+            const bot = await ChatBot.getBot(session)
+            const nickname = session.username
+            bot.addUserPrompt(`{ "userName": "${nickname}","userContent": "${session.content}" }`)
+            return next()
+        })
     }
 }

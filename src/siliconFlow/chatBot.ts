@@ -12,7 +12,13 @@ export class ChatBot {
     temperature = 0.7
 
     history: Message[] = []
-    logger: any
+    logger: {
+        info(...object: any)
+        warn(...object: any)
+        error(...object: any)
+        debug(...object: any)
+        log(...object: any)
+    } = console
 
     constructor(apichat: string, apiKey: string, model: string, logger: any = console) {
         this.api$chat = apichat + `/chat/completions`
@@ -23,7 +29,7 @@ export class ChatBot {
         // logger.info(`聊天机器人初始化完成`)
     }
 
-    public setSystemPrompt(prompt: string) {
+    async setSystemPrompt(prompt: string) {
         // 校验 prompt 参数
         if (typeof prompt !== 'string' || !prompt.trim()) {
             throw new Error('Prompt must be a non-empty string');
@@ -50,7 +56,7 @@ export class ChatBot {
                 return undefined
             }
         } catch (error) {
-            data.ctx.logger.warn(`解析系统提示失败: ${error.message}`)
+            this.logger.warn(`解析系统提示失败: ${error.message}`)
             return undefined
         }
     }
@@ -221,62 +227,17 @@ export class ChatBot {
         return ChatBot.createNewBot(guildId, platform)
     }
 
-    static async tryRestoreFromDB(guildId: string, platform: string): Promise<ChatBot | null> {
-        try {
-            // 寻找匹配的记录
-            const [guildIdFind] = await data.ctx.database.get('channel', {
-                id: guildId,
-                platform: platform,
-            })
-
-            if (!guildIdFind?.chatbot?.history) return null
-
-            const { history } = guildIdFind.chatbot
-            const bot = await ChatBot.createBotInstance()
-
-            if (history?.length > 1)
-                bot.history = history
-            ChatBot.configureSystemPrompt(bot, guildId)
-
-            return bot
-        } catch (error) {
-            data.ctx.logger.warn(`数据库查询失败: ${error.message}`)
-            return null
-        }
-    }
-
     static async createNewBot(guildId: string, platform: string): Promise<ChatBot> {
         const bot = await ChatBot.createBotInstance()
-        ChatBot.configureSystemPrompt(bot, guildId)
+        bot.setSystemPrompt(ConfigService.getSystemPrompt(guildId))
         ChatBot.persistBotToDB(bot, guildId, platform)
         chatBots.set(guildId, bot)
         return bot
     }
 
-    /**
-     * 更新实例中的系统提示词
-     * 优先级:
-     * 1. 配置表
-     * 2. 历史记录中第一个消息
-     * 3. 默认值
-     * @param bot 
-     * @param guildId 
-     */
-    static async configureSystemPrompt(bot: ChatBot, guildId: string) {
-        const config = data.config
-        const perGuildPrompt = config.perGuildConfig.find(item => item?.guildId === guildId)?.systemPrompt
-        const botGuildPrompt = bot.getSystemPrompt()
-        const globalPrompt = ConfigService.getSystemPrompt()
-        const systemPrompt = perGuildPrompt || botGuildPrompt || globalPrompt
-
-        bot.setSystemPrompt(
-            ChatBot.replaceSystemPrompt(systemPrompt, guildId)
-        )
-    }
-
-    static replaceSystemPrompt(template: string, guildId: string) {
-        return template.replace('【guildId】', `[${guildId}]`)
-    }
+    // static replaceSystemPrompt(template: string, guildId: string) {
+    //     return template.replace('【guildId】', `[${guildId}]`)
+    // }
 
     static async createBotInstance(): Promise<ChatBot> {
         return new ChatBot(
@@ -301,6 +262,47 @@ export class ChatBot {
             data.ctx.logger.info(`成功持久化 ${guildId} 的对话机器人`)
         } catch (error) {
             data.ctx.logger.warn(`数据库写入失败: ${error.message}`)
+        }
+    }
+
+    /**
+     * 尝试从数据库中恢复聊天机器人实例
+     * 
+     * 此函数异步地尝试根据给定的 guildId 和 platform 从数据库中查找并恢复一个聊天机器人实例
+     * 它首先查询数据库以找到匹配的记录，如果记录存在且包含聊天机器人的历史记录，则创建一个新的聊天机器人实例
+     * 并用这些历史记录进行初始化如果没有找到合适的记录，或者出现错误，函数将返回 null
+     * 
+     * @param guildId {string} - 服务器/群组的唯一标识符
+     * @param platform {string} - 聊天平台的类型
+     * @returns {Promise<ChatBot | null>} - 返回一个 Promise，解析为 ChatBot 实例或 null
+     */
+    static async tryRestoreFromDB(guildId: string, platform: string): Promise<ChatBot | null> {
+        try {
+            // 寻找匹配的记录
+            const [guildIdFind] = await data.ctx.database.get('channel', {
+                id: guildId,
+                platform: platform,
+            })
+
+            // 如果找不到有效的记录或记录中没有聊天机器人的历史，返回 null
+            if (!guildIdFind?.chatbot?.history) return null
+
+            // 提取历史记录并创建聊天机器人实例
+            const { history } = guildIdFind.chatbot
+            const bot = await ChatBot.createBotInstance()
+
+            // 如果历史记录长度大于 1，将其赋值给新创建的聊天机器人实例
+            if (history?.length > 1)
+                bot.history = history
+            // 配置聊天机器人的系统提示
+            bot.setSystemPrompt(ConfigService.getSystemPrompt(guildId))
+
+            // 返回初始化完毕的聊天机器人实例
+            return bot
+        } catch (error) {
+            // 如果发生错误，记录警告并返回 null
+            data.ctx.logger.warn(`数据库查询失败: ${error.message}`)
+            return null
         }
     }
 }

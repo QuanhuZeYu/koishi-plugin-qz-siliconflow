@@ -1,7 +1,6 @@
 import { Context, Dict, h, Schema, segment, Session } from 'koishi'
 import { ChatBot, chatBots } from './siliconFlow/chatBot'
 import { ChatBotTable } from './interface/chatBotTable'
-import { onMessageRecive } from './event/onMessageRecive'
 import { ConfigService } from './service/ConfigService'
 import { platform } from 'os'
 import { TokenService } from './service/TokenService'
@@ -20,7 +19,7 @@ declare module 'koishi' {
 
 export const name = 'qz-siliconflow'
 
-export interface Config {
+export type Config = {
     select: {
         platform?: string
         apiEndpoint?: string
@@ -47,6 +46,7 @@ export interface Config {
     perGuildConfig: {
         guildId?: string
         systemPrompt?: string
+        modelId?: string
     }[]
 }
 
@@ -65,8 +65,8 @@ export const Config: Schema<Config> = Schema.intersect([
     Schema.object({
         detail: Schema.object({
             systemPrompt: Schema.string()
-                .description('系统提示词，【】为替换符号')
-                .default('接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊【guildId】。'), // 保持原默认值
+                .description('系统提示词，$为替换符号，目前支持 $guildId')
+                .default('接下来对话中的json文本均提取userContent为内容，userName是发送该消息的用户名。当前对话发生在群聊$guilId。'), // 保持原默认值
             maxToken: Schema.number().description('生成最大 token 数量').default(2048),
             frequency: Schema.number().role('slider').min(0).max(1).default(0.5)
                 .description('重复惩罚 [0~1]'),
@@ -88,6 +88,7 @@ export const Config: Schema<Config> = Schema.intersect([
                 guildId: Schema.string().required().description('群组 ID'),
                 name: Schema.string().description('备注名称'),
                 systemPrompt: Schema.string().description('自定义系统提示词'),
+                modelId: Schema.string().description('自定义模型'),
             })
         ).collapse(true).role('table')
     }).description('按群组配置'),
@@ -108,13 +109,10 @@ export async function apply(ctx: Context) {
     KoishiChat.commandChatClear(ctx)
     KoishiChat.commandChatNH(ctx)
     KoishiChat.commandChatModelList(ctx)
+    KoishiChat.collectMessage(ctx)
 
-
-    ctx.middleware(async (session, next) => {
-        return onMessageRecive(session, next)
-    })
 
     ctx.on('config', async () => {
-        ConfigService.onConfigChange()
+        await ConfigService.onConfigChange()
     });
 }
