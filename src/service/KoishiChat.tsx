@@ -6,6 +6,8 @@ import { } from "@koishijs/plugin-adapter-satori"
 import { OneBot } from "koishi-plugin-adapter-onebot"
 import { FavorableSystem } from "./FavorableSystem";
 import { Config, data } from "..";
+import { randomInt } from "crypto";
+import { Utils } from "../utils/Utils";
 
 declare module 'koishi' {
     interface Events {
@@ -29,7 +31,7 @@ export class KoishiChat {
                 .action(async (v, message) => {
                     const chatbot = await ChatBot.getBot(v.session)
                     const userid = v.session.userId
-                    const nickname = v.session.username
+                    const nickname = await Utils.getGroupUserNickName(v.session)
                     const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
                     if (await ctx.qz_siliconflow_tokenservice.checkUserToken(userid) === false) {
                         // const remainToken = userInfo?.maxToken - userInfo?.useToken
@@ -83,7 +85,7 @@ export class KoishiChat {
                 .action(async (v, message) => {
                     const chatbot = await ChatBot.getBot(v.session)
                     const userid = v.session.userId
-                    const nickname = v.session.username
+                    const nickname = await Utils.getGroupUserNickName(v.session)
                     const messageSend = `{"userName":"${nickname}", "userContent":"${message}"}`
                     if (!ctx.qz_siliconflow_tokenservice.checkUserToken(userid)) {
                         // const remainToken = userInfo?.maxToken - userInfo?.useToken
@@ -169,43 +171,132 @@ export class KoishiChat {
 
     static onPoke(ctx: Context) {
         const logger = ctx.logger
+        const config = ctx.config as Config
+        logger.debug('[onPoke] 注册戳一戳事件处理器')
+
         // region onPoke
-        ctx.inject([FavorableSystem.SERVICE_NAME], (ctx_) => {
-            ctx_.on(`notice`, async (session) => {
-                if (session.subtype !== `poke`) {
+        ctx.inject([FavorableSystem.SERVICE_NAME], async ctx_ => {
+            logger.debug('[onPoke] 依赖注入完成，注册notice监听')
+
+            ctx_.on('notice', async (session) => {
+                logger.debug(`[onPoke] 接收到notice事件，类型: ${session.subtype}，用户: ${session.userId}，群组: ${session.guildId}`)
+
+                // 事件类型过滤
+                if (session.subtype !== 'poke') {
+                    logger.debug('[onPoke] 忽略非poke类型notice事件')
                     return
                 }
+
+                // 目标检查
                 if (session.targetId !== session.bot.userId) {
+                    logger.debug(`[onPoke] 忽略非指向机器人的poke事件，目标ID: ${session.targetId}`)
                     return
                 }
+
+                // 私聊过滤
                 if (session.isDirect) {
+                    logger.debug('[onPoke] 忽略私聊poke事件')
                     return
                 }
-                // 尝试反戳回去
-                const param = { user_id: session.userId, group_id: session.guildId }
-                await (session.bot.internal as OneBot.Internal)._request(`group_poke`, param)
-                // 获取用户等级并确保非负
-                let level = await ctx_.qz_filiconflow_favorable_system.getLevel(session.userId)
-                if (level < 0) level = 0;
-                // 获取配置中的等级并正确排序
-                const config = ctx.config as Config
-                const allLevel = config.pokeFavorable.levels
-                    .map(l => l.level)
-                    .sort((a, b) => a - b) // 升序
-                // 找到匹配的最大等级
-                let matchedLevel = 0
-                for (const current of allLevel) {
-                    if (current > level) break // 已排序，后续元素更大，无需继续
-                    matchedLevel = current
+
+                try {
+                    // 反戳逻辑
+                    const param = {
+                        user_id: session.userId,
+                        group_id: session.guildId
+                    }
+                    logger.debug(`[onPoke] 尝试反戳用户，参数: ${JSON.stringify(param)}`)
+
+                    await (session.bot.internal as OneBot.Internal)._request('group_poke', param)
+                    logger.debug('[onPoke] 反戳操作成功完成')
+
+                    // 增加好感逻辑
+                    const maxLevel = config.pokeFavorable?.maxFavorable ?? 200
+                    let levelP = await ctx_.qz_filiconflow_favorable_system.getLevel(session.userId)
+                    levelP = Math.min(levelP + (randomInt(1, 10) * 0.1), maxLevel) // 确保不超过最大值
+                    await ctx_.qz_filiconflow_favorable_system.setLevel(session.userId, levelP)
+
+                    // 等级获取逻辑
+                    let level: number
+                    try {
+                        level = await ctx_.qz_filiconflow_favorable_system.getLevel(session.userId)
+                        logger.debug(`[onPoke] 原始用户等级获取成功，用户ID: ${session.userId}，等级: ${level}`)
+                    } catch (error) {
+                        logger.error(`[onPoke] 获取用户等级失败，用户ID: ${session.userId}，错误: ${error.message}`)
+                        throw error
+                    }
+
+                    // 等级修正
+                    if (level < 0) {
+                        logger.debug(`[onPoke] 等级修正（负数调整为0），原等级: ${level}`)
+                        level = 0
+                    }
+
+                    // 配置处理
+                    logger.debug(`[onPoke] 获取配置: ${JSON.stringify(config.pokeFavorable)}`)
+
+                    const rawLevels = config.pokeFavorable.levels.map(l => l.level)
+                    logger.debug(`[onPoke] 原始等级列表: ${rawLevels.join(', ')}`)
+
+                    const allLevel = rawLevels.sort((a, b) => a - b)
+                    logger.debug(`[onPoke] 排序后等级列表: ${allLevel.join(', ')}`)
+
+                    // 等级匹配逻辑
+                    let matchedLevel = 0
+                    logger.debug(`[onPoke] 开始等级匹配，当前等级: ${level}`)
+
+                    for (const current of allLevel) {
+                        logger.debug(`[onPoke] 检查等级 ${current}`)
+                        if (current > level) {
+                            logger.debug(`[onPoke] 当前等级 ${current} 超过用户等级 ${level}，终止匹配`)
+                            break
+                        }
+                        matchedLevel = current
+                        logger.debug(`[onPoke] 暂时匹配等级更新为 ${matchedLevel}`)
+                    }
+                    logger.debug(`[onPoke] 最终匹配等级: ${matchedLevel}`)
+                    level = matchedLevel
+
+                    // 提示语获取
+                    const prompt = config.pokeFavorable.levels.find(l => l.level === level)?.prompt
+                    logger.debug(`[onPoke] 匹配到等级${level}的提示语: ${prompt || '未找到对应提示语'}`)
+
+                    // AI消息处理
+                    const aiBot = ctx_.qz_filiconflow_favorable_system.aiBot
+                    logger.debug('[onPoke] 准备发送AI消息')
+
+                    const processedPrompt = await FavorableSystem.replacePrompt(prompt, session)
+                    logger.debug(`[onPoke] 处理后的提示语: ${processedPrompt}`)
+
+                    const response = await aiBot.sendMessage(processedPrompt)
+                    logger.debug(`[onPoke] AI响应数据: ${JSON.stringify({
+                        common: response.commonResponse,
+                        useInfo: response.useInfo,
+                        json: response.jsonResponse
+                    })}`)
+
+                    // 消息发送
+                    const { jsonResponse } = response
+                    logger.debug(`[onPoke] 准备发送消息，内容长度: ${jsonResponse?.length}`)
+
+                    const qqresponse =
+                        <message>
+                            <message>
+                                <author id={session.bot.user.id} name={session.bot.user.name} />
+                                <quote id={session.messageId} />
+                                <at id={session.userId} />
+                                {' ' + jsonResponse}
+                            </message>
+                        </message>
+                    await session.send(qqresponse)
+                    logger.debug('[onPoke] 消息发送成功完成')
+
+                } catch (error) {
+                    logger.error(`[onPoke] 处理过程中发生错误: ${error.message}`)
+                    logger.error(error.stack)
+                    // 可选：发送错误提示
+                    // await session.send('处理请求时发生错误，请联系管理员')
                 }
-                // 更新最终等级
-                level = matchedLevel;
-                const prompt = config.pokeFavorable.levels.find(l => l.level === level)?.prompt
-                const aiBot = ctx_.qz_filiconflow_favorable_system.aiBot
-                const response = await aiBot.sendMessage(FavorableSystem.replacePrompt(prompt, session))
-                const { commonResponse, useInfo, jsonResponse } = response
-                await session.send(jsonResponse)
-                // await session.send(`${session.username} 戳了戳我`)
             })
         })
         // endregion
@@ -218,7 +309,7 @@ export class KoishiChat {
             if (session.userId === session.bot.userId) return next() // 跳过机器人消息
             // 获取群聊实例的 chatbot
             const bot = await ChatBot.getBot(session)
-            const nickname = session.username
+            const nickname = await Utils.getGroupUserNickName(session)
             bot.addUserPrompt(`{ "userName": "${nickname}","userContent": "${session.content}" }`)
             return next()
         })

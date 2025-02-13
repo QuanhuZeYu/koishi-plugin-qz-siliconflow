@@ -1,10 +1,11 @@
-import { Context, Dict, h, Schema, segment, Session } from 'koishi'
-import { ChatBot, chatBots } from './siliconFlow/chatBot'
+import { Context, Dict, h, HTTP, Schema, segment, Session } from 'koishi'
 import { ChatBotTable } from './interface/chatBotTable'
 import { ConfigService } from './service/ConfigService'
-import { platform } from 'os'
 import { TokenService } from './service/TokenService'
 import { KoishiChat } from './service/KoishiChat'
+import { } from "koishi-plugin-adapter-onebot"
+import { select } from '@satorijs/element/jsx-runtime'
+import { FavorableSystem } from './service/FavorableSystem'
 
 export const inject = ['database'] // 添加这行声明依赖
 
@@ -15,17 +16,27 @@ declare module 'koishi' {
     interface Context {
         qz_siliconflow_config: ConfigService
     }
+    interface Tables {
+        qz_siliconflow: {
+            userId: string
+            useToken?: number
+            maxToken?: number
+            remain?: number
+            level?: number
+        }
+    }
 }
 
 export const name = 'qz-siliconflow'
 
+export type select = {
+    platform?: string
+    apiEndpoint?: string
+    apiKey?: string
+    modelId?: string
+}
 export type Config = {
-    select: {
-        platform?: string
-        apiEndpoint?: string
-        apiKey?: string
-        modelId?: string
-    }
+    select: select
     baseConfig: {
         platform?: string
         apiEndpoint?: string
@@ -47,7 +58,16 @@ export type Config = {
         guildId?: string
         systemPrompt?: string
         modelId?: string
-    }[]
+    }[],
+    pokeFavorable: {
+        levels: {
+            level?: number,
+            prompt?: string
+        }[],
+        select?: select
+        maxFavorable?: number
+        systemPrompt?: string
+    }
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -92,6 +112,23 @@ export const Config: Schema<Config> = Schema.intersect([
             })
         ).collapse(true).role('table')
     }).description('按群组配置'),
+    Schema.object({
+        pokeFavorable: Schema.object({
+            levels: Schema.array(Schema.object({
+                level: Schema.number().description(`好感等级`),
+                prompt: Schema.string().description(`提示词`)
+            })).description(`提示词用于指导大模型该好感等级应该回复什么`).role(`table`)
+                .default([
+                    { level: 0, prompt: `{'userName': '$userName', '好感度': $favorable}。用户 $userName 戳了一下你，请你以厌恶、生气、傲娇的语气回复一段话，例如"你很烦欸，别戳了"` },
+                    { level: 50, prompt: `{'userName': '$userName', '好感度': $favorable}。用户 $userName 戳了一下你，请你以比较好的朋友、平和的语气回复一段话，例如"别戳了，休息一下吧"` },
+                    { level: 100, prompt: `{'userName': '$userName', '好感度': $favorable}。用户 $userName 戳了一下你，请你以恋爱中、喜欢、热恋的语气回复一段话，例如"欸，有什么事吗"` },
+                ]),
+            select: Schema.dynamic(ConfigService.SERVICE_NAME),
+            maxFavorable: Schema.number().description(`最大好感度`).default(200),
+            systemPrompt: Schema.string().description(`好感系统提示词`)
+                .default(`你当前在一个群聊，请你生成他人戳你一下的回复，长度不超过200字`)
+        }).role(`table`),
+    }).description(`好感系统`)
 ])
 
 export let data: {
@@ -104,6 +141,7 @@ export async function apply(ctx: Context) {
     data.config = ctx.config
     ctx.plugin(ConfigService)
     ctx.plugin(TokenService)
+    ctx.plugin(FavorableSystem)
 
     KoishiChat.commandChat(ctx)
     KoishiChat.commandChatClear(ctx)
@@ -111,8 +149,47 @@ export async function apply(ctx: Context) {
     KoishiChat.commandChatModelList(ctx)
     KoishiChat.collectMessage(ctx)
 
+    KoishiChat.onPoke(ctx)
+
 
     ctx.on('config', async () => {
         await ConfigService.onConfigChange()
+        ctx.inject([FavorableSystem.SERVICE_NAME], async ctx_ => {
+            await ctx_?.qz_filiconflow_favorable_system?.configUpdate()
+        })
     });
+}
+
+
+function printNestedObject(obj, maxDepth = 3) {
+    const stringify = (value, currentDepth, indent) => {
+        if (currentDepth > maxDepth) return '"..."';
+
+        // 处理非对象类型
+        if (typeof value !== 'object' || value === null) {
+            return JSON.stringify(value);
+        }
+
+        // 处理数组
+        if (Array.isArray(value)) {
+            const items = value.map(item =>
+                `${indent}  ${stringify(item, currentDepth + 1, indent + '  ')}`
+            ).join(`,\n`);
+            return `[\n${items}\n${indent}]`;
+        }
+
+        // 处理对象
+        const entries = Object.entries(value).map(([key, val]) =>
+            `${indent}  "${key}": ${stringify(val, currentDepth + 1, indent + '  ')}`
+        ).join(`,\n`);
+
+        return `{\n${entries}\n${indent}}`;
+    };
+
+    try {
+        const result = stringify(obj, 1, '');
+        console.log(result);
+    } catch (error) {
+        console.error('Error printing object:', error);
+    }
 }

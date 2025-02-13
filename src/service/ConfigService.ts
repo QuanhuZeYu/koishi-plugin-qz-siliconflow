@@ -27,7 +27,12 @@ export class ConfigService extends Service {
         const select = config.select
         const unionSchema = Schema.union(
             Object.entries(config.baseConfig).map(([key, value]) => {
-                const { modelId, apiEndpoint, apiKey, platform } = value
+                const {
+                    modelId = '',
+                    apiEndpoint = '',
+                    apiKey = '',
+                    platform = ''
+                } = value || {};
                 const schema = Schema.object({
                     platform: Schema.const(platform).default(platform).description('平台').required(),
                     apiEndpoint: Schema.const(apiEndpoint).default(apiEndpoint).description('API地址').required(),
@@ -44,7 +49,6 @@ export class ConfigService extends Service {
             })
         )
         ctx.schema.set(`${ConfigService.SERVICE_NAME}`, unionSchema)
-        ctx.logger.info(`当前选择: { platform: `, select.platform, `, apiEndpoint: `, select.apiEndpoint, `, apiKey: `, Boolean(select.apiKey), `, modelId: `, select.modelId, ` }`)
     }
 
     static getPlatform() {

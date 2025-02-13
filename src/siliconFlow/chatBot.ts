@@ -169,6 +169,7 @@ export class ChatBot {
             const assistantResponse = data.choices[0].message.content
             let assistantJsonResponse: any = undefined
 
+            // 判定是否是Json
             // 前置条件：仅在输入为字符串时尝试解析
             if (typeof assistantResponse === 'string') {
                 try {
@@ -181,14 +182,11 @@ export class ChatBot {
                         const hasUserContent = 'userContent' in parsed
                         assistantJsonResponse = hasUserContent ? parsed.userContent : undefined
                     }
+                    // 非Json情况
                 } catch (error) {
+                    assistantJsonResponse = assistantThinking ? assistantResponse : (await this.parseThink(assistantResponse)).cleaned
                     // 可在此处添加日志输出（根据需求可选）
                     this.logger.error('[JSON Parse] 非JSON响应内容:', assistantResponse)
-                    if (assistantResponse.length <= 300) {
-                        assistantJsonResponse = assistantResponse
-                    } else if (assistantResponse.length > 300) {
-                        assistantJsonResponse = assistantResponse.slice(0, 300) + '...'
-                    }
                 }
             }
             let totalUsage: number = 0
@@ -207,6 +205,45 @@ export class ChatBot {
                 }
             }
         }
+    }
+
+    private async parseThink(content: string): Promise<{ cleaned: string; thoughts: string[] }> {
+        const logger = data.ctx.logger;
+        const THINK_REGEX = /<think>([\s\S]*?)<\/think>/gi;
+        const thoughts: string[] = [];
+
+        logger.debug('[parseThink] 开始解析内容');
+        logger.debug(`[parseThink] 原始输入内容 (${content.length} 字符): ${content.slice(0, 50)}${content.length > 50 ? '...' : ''}`);
+
+        // 提取所有 think 内容
+        let match: RegExpExecArray | null;
+        let matchCount = 0;
+        while ((match = THINK_REGEX.exec(content)) !== null) {
+            const rawContent = match[1];
+            const trimmedContent = rawContent.trim();
+            thoughts.push(trimmedContent);
+
+            logger.debug(`[parseThink] 发现第 ${++matchCount} 个 think 标签`);
+            logger.debug(`[parseThink] 原始内容位置: ${match.index}-${match.index + match[0].length}`);
+            logger.debug(`[parseThink] 提取内容 (${trimmedContent.length} 字符): ${trimmedContent.slice(0, 40)}${trimmedContent.length > 40 ? '...' : ''}`);
+        }
+
+        if (matchCount === 0) {
+            logger.debug('[parseThink] 未找到任何 think 标签');
+        }
+
+        // 移除所有 think 标签
+        const preCleaned = content.replace(THINK_REGEX, '');
+        logger.debug(`[parseThink] 移除标签后预处理内容 (${preCleaned.length} 字符): ${preCleaned.slice(0, 50)}${preCleaned.length > 50 ? '...' : ''}`);
+
+        const cleaned = preCleaned.replace(/\s+/g, ' ').trim();
+        logger.debug(`[parseThink] 最终清理后内容 (${cleaned.length} 字符): ${cleaned.slice(0, 50)}${cleaned.length > 50 ? '...' : ''}`);
+        logger.debug(`[parseThink] 共提取 ${thoughts.length} 条思考内容`);
+
+        return {
+            cleaned,
+            thoughts
+        };
     }
 
 

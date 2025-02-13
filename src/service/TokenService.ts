@@ -4,14 +4,6 @@ declare module "koishi" {
     interface Context {
         qz_siliconflow_tokenservice: TokenService
     }
-    interface Tables {
-        qz_siliconflow: {
-            userId: string
-            useToken: number
-            maxToken: number
-            remain: number
-        }
-    }
 }
 export class TokenService extends Service {
 
