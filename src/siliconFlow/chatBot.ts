@@ -86,11 +86,11 @@ export class ChatBot {
         return response
     }
 
-    async sendMessage(input: string) {
+    async sendMessage(input: string, role?: "user" | "system") {
         // 一种不带历史记录的聊天方式
         this.logger.info(`用户输入：${input}`)
         const message: Message[] = [{
-            role: 'user',
+            role: role ?? "user",
             content: input,
         }]
         const requestResp = await this._sendApiRequest(message)
@@ -148,62 +148,148 @@ export class ChatBot {
     }
 
     private async _handleResponse(apiResponse: ApiResponse): Promise<ChatBotResponseMessage> {
+        const logger = data.ctx.logger;
         const varResponse = apiResponse.response;
+
+        logger.debug('[handleResponse] 开始处理API响应');
+        logger.debug(`[handleResponse] 响应状态: ${varResponse.status} ${varResponse.statusText}`);
+
+        // 处理非200状态码
         if (varResponse.status !== 200) {
-            this.logger.error(`[请求失败] 错误详情: ${await varResponse.text()}`);
+            const errorText = await varResponse.text();
+            logger.error(`[handleResponse] 请求失败 - 状态码异常`, {
+                status: varResponse.status,
+                statusText: varResponse.statusText,
+                errorPreview: errorText.slice(0, 100) + (errorText.length > 100 ? '...' : '')
+            });
+
             return {
-                commonResponse: `抱歉，请求时出现异常;` + (varResponse.statusText ?
-                    `${varResponse.statusText}` : '未知错误类型')
-            }
+                commonResponse: `抱歉，请求时出现异常（${varResponse.statusText || '未知错误'}）`
+            };
         }
 
+        // 处理非OK响应
         if (!varResponse.ok) {
-            this.logger.error(`[请求失败] 错误详情: ${await varResponse.text()}`);
-            throw new Error(`API request failed: ${varResponse.statusText}`);
+            const errorText = await varResponse.text();
+            logger.error('[handleResponse] 请求失败 - 响应状态异常', {
+                ok: varResponse.ok,
+                errorPreview: errorText.slice(0, 100) + (errorText.length > 100 ? '...' : '')
+            });
+            throw new Error(`API请求失败: ${varResponse.statusText}`);
         }
 
-        const data: ChatResponse = await varResponse.json();
+        try {
+            // 解析JSON响应
+            logger.debug('[handleResponse] 开始解析JSON响应');
+            const chatResponse: ChatResponse = await varResponse.json();
+            logger.debug('[handleResponse] JSON解析成功', {
+                hasChoices: !!chatResponse.choices,
+                choiceCount: chatResponse.choices?.length || 0
+            });
 
-        if (data.choices?.[0]?.message?.content) {
-            const assistantThinking = data.choices[0].message.reasoning_content
-            const assistantResponse = data.choices[0].message.content
-            let assistantJsonResponse: any = undefined
+            // 处理有效响应内容
+            if (chatResponse.choices?.[0]?.message?.content) {
+                const message = chatResponse.choices[0].message;
+                logger.debug('[handleResponse] 发现有效消息内容', {
+                    contentPreview: message.content.slice(0, 50) + (message.content.length > 50 ? '...' : ''),
+                    hasReasoning: !!message.reasoning_content
+                });
 
-            // 判定是否是Json
-            // 前置条件：仅在输入为字符串时尝试解析
-            if (typeof assistantResponse === 'string') {
-                try {
-                    // 安全解析JSON
-                    const parsed = JSON.parse(assistantResponse)
+                const assistantThinking = message.reasoning_content;
+                const assistantResponse = message.content;
+                let assistantJsonResponse: any = undefined;
 
-                    // 校验解析结果为对象（非数组/原始值）
-                    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                        // 安全访问嵌套属性（类型安全版）
-                        const hasUserContent = 'userContent' in parsed
-                        assistantJsonResponse = hasUserContent ? parsed.userContent : undefined
+                // 处理JSON内容
+                if (typeof assistantResponse === 'string') {
+                    logger.debug('[handleResponse] 开始处理字符串响应内容');
+                    try {
+                        logger.debug('[handleResponse] 尝试解析JSON内容');
+                        const parsed = JSON.parse(assistantResponse);
+                        logger.debug('[handleResponse] JSON解析结果类型', typeof parsed);
+
+                        // 校验JSON结构
+                        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            logger.debug('[handleResponse] 验证为有效对象结构');
+                            assistantJsonResponse = 'userContent' in parsed ? parsed.userContent : undefined;
+                            logger.debug('[handleResponse] 提取的userContent', {
+                                exists: !!assistantJsonResponse,
+                                type: typeof assistantJsonResponse
+                            });
+                        } else {
+                            logger.warn('[handleResponse] 解析结果不符合对象要求', {
+                                isArray: Array.isArray(parsed),
+                                type: typeof parsed
+                            });
+                            const parsedThink = await this.parseThink(assistantResponse);
+                            // 业务逻辑决策
+                            assistantJsonResponse = (assistantThinking?.trim().length > 1) // 至少1字符才视为有效
+                                ? assistantResponse
+                                : parsedThink.cleaned || '';
+                        }
+                    } catch (error) {
+                        logger.error('[handleResponse] JSON解析失败', {
+                            error: error.message,
+                            contentPreview: assistantResponse.slice(0, 100) + (assistantResponse.length > 100 ? '...' : '')
+                        });
+
+                        // 回退处理逻辑
+                        const parsedThink = await this.parseThink(assistantResponse);
+                        assistantJsonResponse = assistantThinking?.length > 0 ? assistantResponse : parsedThink.cleaned;
+                        logger.debug('[handleResponse] 回退处理结果', {
+                            method: assistantThinking ? '直接使用响应' : '使用parseThink',
+                            cleanedPreview: parsedThink.cleaned.slice(0, 50) + (parsedThink.cleaned.length > 50 ? '...' : '')
+                        });
                     }
-                    // 非Json情况
-                } catch (error) {
-                    assistantJsonResponse = assistantThinking ? assistantResponse : (await this.parseThink(assistantResponse)).cleaned
-                    // 可在此处添加日志输出（根据需求可选）
-                    this.logger.error('[JSON Parse] 非JSON响应内容:', assistantResponse)
                 }
-            }
-            let totalUsage: number = 0
-            if (data.usage) {
-                totalUsage = data.usage.prompt_tokens + data.usage.completion_tokens
-            }
-            const response: string = `助手思考: [${assistantThinking}]\n\n` +
-                `----------\n` +
-                `${assistantResponse}\n\n` +
-                `问题用量: ${data.usage.prompt_tokens} | 回复用量: ${data.usage.completion_tokens} | 总用量: ${totalUsage} | 消耗时间: ${apiResponse.duration}ms`
-            return {
-                commonResponse: response, jsonResponse: assistantJsonResponse, useInfo: {
-                    promptTokens: data.usage.prompt_tokens,
-                    completionTokens: data.usage.completion_tokens,
-                    totalTokens: totalUsage,
+
+                // 计算用量
+                let totalUsage = 0;
+                if (chatResponse.usage) {
+                    totalUsage = chatResponse.usage.prompt_tokens + chatResponse.usage.completion_tokens;
+                    logger.debug('[handleResponse] 用量统计', {
+                        promptTokens: chatResponse.usage.prompt_tokens,
+                        completionTokens: chatResponse.usage.completion_tokens,
+                        totalUsage,
+                        duration: apiResponse.duration
+                    });
                 }
+
+                // 构建响应消息
+                const response = [
+                    `助手思考: [${assistantThinking}]`,
+                    `----------`,
+                    `${assistantResponse}`,
+                    `问题用量: ${chatResponse.usage?.prompt_tokens || 'N/A'} | ` +
+                    `回复用量: ${chatResponse.usage?.completion_tokens || 'N/A'} | ` +
+                    `总用量: ${totalUsage || 'N/A'} | ` +
+                    `耗时: ${apiResponse.duration}ms`
+                ].join('\n\n');
+
+                logger.debug('[handleResponse] 最终响应结构', {
+                    commonLength: response.length,
+                    hasJsonResponse: !!assistantJsonResponse,
+                    jsonType: typeof assistantJsonResponse
+                });
+
+                return {
+                    commonResponse: response,
+                    jsonResponse: assistantJsonResponse,
+                    useInfo: {
+                        promptTokens: chatResponse.usage?.prompt_tokens || 0,
+                        completionTokens: chatResponse.usage?.completion_tokens || 0,
+                        totalTokens: totalUsage
+                    }
+                };
             }
+
+            logger.warn('[handleResponse] 未找到有效消息内容');
+            return { commonResponse: '未获取到有效响应内容' };
+        } catch (error) {
+            logger.error('[handleResponse] 处理响应时发生异常', {
+                error: error.message,
+                stack: error.stack?.split('\n').slice(0, 3).join(' | ')
+            });
+            throw error;
         }
     }
 

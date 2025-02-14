@@ -102,7 +102,7 @@ export class ConfigService extends Service {
     }
     static replaceMarket(prompt: string, guildId?: string) {
         // 找到 $guilId 替换为 guildId
-        return prompt.replace('$guildId', guildId);
+        return prompt.replaceAll('$guildId', guildId);
     }
 
     static async onConfigChange() {
@@ -129,28 +129,48 @@ export class ConfigService extends Service {
     }
 
     static async getModelList(ctx: Context) {
+        const logger = ctx.logger
         const apikey = ConfigService.getApiKey()
+
+        // 记录方法开始执行
+        logger.debug('开始获取模型列表')
+
         try {
-            const response = await fetch(`${ConfigService.getApiEndpoint()}/models`, {
+            const apiEndpoint = ConfigService.getApiEndpoint()
+            // 脱敏处理API密钥，只显示前5位
+            logger.debug(`准备请求接口: ${apiEndpoint}/models，使用API密钥: ${apikey.slice(0, 5)}***`)
+
+            const response = await fetch(`${apiEndpoint}/models`, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apikey}`
                 }
             })
-            // 处理HTTP错误状态
+
+            // 记录响应状态
+            logger.debug(`收到API响应，状态码: ${response.status} ${response.statusText}`)
+
             if (!response.ok) {
                 const errorData = await response.json();
+                // 记录HTTP错误详情
+                logger.debug(`API请求失败详情: [${response.status}] ${errorData.error?.message || '无错误详情'}`)
                 throw new Error(`API请求失败: ${response.status} ${response.statusText} - ${errorData.error?.message}`);
             }
-            // 解析并断言响应类型
+
             const data = await response.json() as ModelResponse
+            // 记录获取到的模型数量
+            logger.debug(`成功获取模型列表，共${data.data?.length || 0}个模型`)
+
             return data.data;
         } catch (error) {
-            // 增强错误处理
+            // 记录完整错误信息（包含堆栈）
+            logger.debug('获取模型列表异常详情:', error)
+
             if (error instanceof Error) {
                 throw new Error(`获取模型列表失败: ${error.message}`);
             }
             throw new Error('发生未知错误');
         }
     }
+
 }

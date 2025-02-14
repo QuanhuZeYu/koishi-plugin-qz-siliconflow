@@ -133,26 +133,62 @@ export class KoishiChat {
     }
 
     static commandChatModelList(ctx: Context) {
+        const logger = ctx.logger;
+        logger.debug('[commandChatModelList] 注册 chat-models 命令');
+
         // region command Chat-models
         ctx.command('chat-models', '获取可用模型列表')
             .alias('qz-sf-models')
             .action(async (v, message) => {
-                const models = await ConfigService.getModelList(ctx)
-                let stringBuilder: string = ''
-                models.forEach(element => {
-                    stringBuilder += element.id + '\n'
-                    ctx.logger.info(`模型名称: ${element.id}`)
-                })
-                const response = (
-                    <message forward>
+                const startTime = Date.now();
+                logger.debug(`[commandChatModelList] 命令触发，用户: ${v.session.userId}，群组: ${v.session.guildId || '私聊'}`);
+
+                try {
+                    // 获取模型列表
+                    logger.debug('[commandChatModelList] 开始获取模型列表');
+                    const models = await ConfigService.getModelList(ctx);
+                    logger.debug(`[commandChatModelList] 获取到 ${models.length} 个模型`);
+
+                    // 处理模型数据
+                    logger.debug('[commandChatModelList] 开始构建响应内容');
+                    let stringBuilder = '';
+                    models.forEach((element, index) => {
+                        stringBuilder += element.id + '\n';
+                        logger.debug(`[commandChatModelList] 添加模型 [${index + 1}/${models.length}]：${element.id}`);
+                    });
+
+                    // 构建消息
+                    logger.debug('[commandChatModelList] 构建转发消息结构');
+                    const response = (
+                        <message forward>
+                            <message>
+                                <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
+                                {stringBuilder}
+                            </message>
+                        </message>
+                    );
+
+                    // 记录消息摘要
+                    logger.debug(`[commandChatModelList] 消息内容长度：${stringBuilder.length} 字符`);
+                    logger.debug(`[commandChatModelList] 消息预览：${stringBuilder.slice(0, 50).replace(/\n/g, ' ')}${stringBuilder.length > 50 ? '...' : ''}`);
+
+                    // 发送消息
+                    logger.debug('[commandChatModelList] 准备发送消息');
+                    await v.session.send(response);
+                    logger.debug(`[commandChatModelList] 消息发送完成，耗时 ${Date.now() - startTime}ms`);
+                } catch (error) {
+                    logger.error(`[commandChatModelList] 命令处理失败：${error.message}`);
+                    logger.error(error.stack);
+
+                    // 发送错误提示（可选）
+                    await v.session.send(
                         <message>
                             <author id={v.session.bot.user.id} name={v.session.bot.user.name} />
-                            {stringBuilder}
+                            获取模型列表失败，请联系管理员
                         </message>
-                    </message>
-                )
-                await v.session.send(response)
-            })
+                    );
+                }
+            });
         // endregion
     }
 
@@ -228,31 +264,27 @@ export class KoishiChat {
 
                     // 等级修正
                     if (level < 0) {
-                        logger.debug(`[onPoke] 等级修正（负数调整为0），原等级: ${level}`)
                         level = 0
                     }
 
                     // 配置处理
-                    logger.debug(`[onPoke] 获取配置: ${JSON.stringify(config.pokeFavorable)}`)
+                    logger.debug(`[onPoke] 获取配置: ${JSON.stringify(config.pokeFavorable).slice(0, 100) + (JSON.stringify(config.pokeFavorable).length > 100 ? '...' : '')}`)
 
                     const rawLevels = config.pokeFavorable.levels.map(l => l.level)
-                    logger.debug(`[onPoke] 原始等级列表: ${rawLevels.join(', ')}`)
+                    logger.debug(`[onPoke] `)
 
                     const allLevel = rawLevels.sort((a, b) => a - b)
-                    logger.debug(`[onPoke] 排序后等级列表: ${allLevel.join(', ')}`)
+                    logger.debug(`[onPoke] 原始等级列表: ${rawLevels.join(', ')}\n排序后等级列表: ${allLevel.join(', ')}`)
 
                     // 等级匹配逻辑
                     let matchedLevel = 0
                     logger.debug(`[onPoke] 开始等级匹配，当前等级: ${level}`)
 
                     for (const current of allLevel) {
-                        logger.debug(`[onPoke] 检查等级 ${current}`)
                         if (current > level) {
-                            logger.debug(`[onPoke] 当前等级 ${current} 超过用户等级 ${level}，终止匹配`)
                             break
                         }
                         matchedLevel = current
-                        logger.debug(`[onPoke] 暂时匹配等级更新为 ${matchedLevel}`)
                     }
                     logger.debug(`[onPoke] 最终匹配等级: ${matchedLevel}`)
                     level = matchedLevel
@@ -268,7 +300,7 @@ export class KoishiChat {
                     const processedPrompt = await FavorableSystem.replacePrompt(prompt, session)
                     logger.debug(`[onPoke] 处理后的提示语: ${processedPrompt}`)
 
-                    const response = await aiBot.sendMessage(processedPrompt)
+                    const response = await aiBot.sendMessage(processedPrompt, "system")
                     logger.debug(`[onPoke] AI响应数据: ${JSON.stringify({
                         common: response.commonResponse,
                         useInfo: response.useInfo,

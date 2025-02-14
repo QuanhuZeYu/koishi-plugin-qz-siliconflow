@@ -71,9 +71,9 @@ export class FavorableSystem extends Service {
         logger.debug(`[replacePrompt] level: ${level}`)
         // 需要将 `$guildId` 替换为 session.guildId `$userName` 替换为 session.username
         return prompt
-            .replace('$guildId', session.guildId)
-            .replace('$userName', userNick)
-            .replace(`$favorable`, level.toString())
+            .replaceAll('$guildId', session.guildId)
+            .replaceAll('$userName', userNick)
+            .replaceAll(`$favorable`, level.toString())
     }
 
     async createAiBot() {
