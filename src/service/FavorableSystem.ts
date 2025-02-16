@@ -2,6 +2,7 @@ import { Context, Service, Session } from "koishi";
 import { ChatBot } from "../siliconFlow/chatBot";
 import { data } from "..";
 import { Utils } from "../utils/Utils";
+import { DataBaseUtils } from "./DataBaseUtils";
 
 declare module "koishi" {
     interface Context {
@@ -30,26 +31,8 @@ export class FavorableSystem extends Service {
         })
     }
 
-    /**
-     * 异步检查用户是否存在，如果不存在则插入新用户
-     * 
-     * 此函数首先查询数据库中是否存在给定userId的用户如果用户存在，则返回该用户的信息
-     * 如果用户不存在，则创建一个新的用户记录并插入到数据库中，然后返回该新用户的信息
-     * 
-     * @param userId 用户的唯一标识符用于查询或插入用户记录
-     * @returns 返回一个用户对象如果找到现有用户或新插入的用户
-     */
     async getUser(userId: string) {
-        // 检查数据库中是否存在该user
-        let user = await this.ctx.database.get(`qz_siliconflow`, { userId })
-        if (user.length > 0) {
-            return user[0]
-        } else {
-            // 如果不存在，则插入一条记录
-            user = [{ userId: userId, level: 0 }]
-            await this.ctx.database.upsert(`qz_siliconflow`, user)
-            return user[0]
-        }
+        return DataBaseUtils.getUser(userId)
     }
 
     async getLevel(userId: string) {

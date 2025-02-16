@@ -17,13 +17,7 @@ declare module 'koishi' {
         qz_siliconflow_config: ConfigService
     }
     interface Tables {
-        qz_siliconflow: {
-            userId: string
-            useToken?: number
-            maxToken?: number
-            remain?: number
-            level?: number
-        }
+        qz_siliconflow: qz_siliconflow
     }
 }
 
