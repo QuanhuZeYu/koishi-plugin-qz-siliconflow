@@ -2,10 +2,10 @@ import { Context, Dict, h, HTTP, Schema, segment, Session } from 'koishi'
 import { ChatBotTable } from './interface/chatBotTable'
 import { ConfigService } from './service/ConfigService'
 import { TokenService } from './service/TokenService'
-import { KoishiChat } from './service/KoishiChat'
 import { } from "koishi-plugin-adapter-onebot"
 import { select } from '@satorijs/element/jsx-runtime'
 import { FavorableSystem } from './service/FavorableSystem'
+import { KoishiChat } from './service/KoishiChat'
 
 export const inject = ['database'] // 添加这行声明依赖
 
@@ -137,13 +137,7 @@ export async function apply(ctx: Context) {
     ctx.plugin(TokenService)
     ctx.plugin(FavorableSystem)
 
-    KoishiChat.commandChat(ctx)
-    KoishiChat.commandChatClear(ctx)
-    KoishiChat.commandChatNH(ctx)
-    KoishiChat.commandChatModelList(ctx)
-    KoishiChat.collectMessage(ctx)
-
-    KoishiChat.onPoke(ctx)
+    const koishiChat = new KoishiChat(ctx)
 
 
     ctx.on('config', async () => {

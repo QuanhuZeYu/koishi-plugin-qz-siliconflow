@@ -2,6 +2,7 @@ import { Session } from "koishi"
 import { data } from ".."
 import { ChatBotResponseMessage, ChatBotTable } from "../interface/chatBotTable"
 import { ConfigService } from "../service/ConfigService"
+import { Utils } from "../utils/Utils"
 
 type ApiResponse = { response: Response, duration?: number }
 export class ChatBot {
@@ -10,6 +11,13 @@ export class ChatBot {
     model = ''
     maxtokens = 2048
     temperature = 0.7
+
+    guildId: string
+    guildName?: string
+    platform: string
+
+    persistTimeStamp: number = 0
+    saveCd = 1000 * 60 * 5
 
     history: Message[] = []
     logger: {
@@ -20,13 +28,18 @@ export class ChatBot {
         log(...object: any)
     } = console
 
-    constructor(apichat: string, apiKey: string, model: string, logger: any = console) {
+    constructor(apichat: string, apiKey: string, model: string, session: Session, logger: any = console) {
         this.api$chat = apichat + `/chat/completions`
         this.apiKey = apiKey
         this.model = model
+
+        this.guildId = session?.guildId
+        this.guildName = session?.event.guild.name
+        this.platform = session?.platform
+
         this.logger = logger
         this.history[0] = { role: 'system', content: '' }
-        // logger.info(`聊天机器人初始化完成`)
+        logger.debug(`[ChatBot 构造函数] 成功创建 ${this?.guildName ?? this?.guildId} 对话机器人`)
     }
 
     async setSystemPrompt(prompt: string) {
@@ -106,12 +119,6 @@ export class ChatBot {
             // 删除索引 1-3 的消息，即删除第二、第三、第四条消息
             this.history = [systemPrompt, ...this.history.slice(-ConfigService.getMaxHistory() - 3)];
         }
-    }
-
-    clearHistory() {
-        this.logger.info(`[历史记录] 清空对话历史 原长度: ${this.history.length}`)
-        const systemPrompt = this.history[0]
-        this.history = [systemPrompt]
     }
 
     private async _sendApiRequest(message: Message[]): Promise<ApiResponse> {
@@ -340,20 +347,24 @@ export class ChatBot {
         if (cachedBot) return cachedBot
 
         // 尝试从数据库恢复
-        const restoredBot = await ChatBot.tryRestoreFromDB(guildId, platform)
+        const restoredBot = await ChatBot.tryRestoreFromDB(session)
         if (restoredBot) {
+            restoredBot.guildName = await Utils.getGroupName(session)
             chatBots.set(guildId, restoredBot)
             return restoredBot
         }
 
         // 创建新实例
-        return ChatBot.createNewBot(guildId, platform)
+        return ChatBot.createNewBot(session)
     }
 
-    static async createNewBot(guildId: string, platform: string): Promise<ChatBot> {
-        const bot = await ChatBot.createBotInstance()
+    static async createNewBot(session: Session): Promise<ChatBot> {
+        const { guildId, platform } = session
+        const guildName = await Utils.getGroupName(session)
+        const bot = await ChatBot.createBotInstance(session)
         bot.setSystemPrompt(ConfigService.getSystemPrompt(guildId))
-        ChatBot.persistBotToDB(bot, guildId, platform)
+        bot.guildName = guildName
+        bot.persistBotToDB()
         chatBots.set(guildId, bot)
         return bot
     }
@@ -362,30 +373,14 @@ export class ChatBot {
     //     return template.replace('【guildId】', `[${guildId}]`)
     // }
 
-    static async createBotInstance(): Promise<ChatBot> {
+    static async createBotInstance(session: Session): Promise<ChatBot> {
         return new ChatBot(
             ConfigService.getApiEndpoint(),
             ConfigService.getApiKey(),
             ConfigService.getModelId(),
+            session,
             data.ctx.logger
         )
-    }
-
-    static async persistBotToDB(bot: ChatBot, guildId: string, platform: string) {
-        try {
-            await data.ctx.database.set('channel',
-                { id: guildId, platform },
-                {
-                    chatbot: {
-                        guildId: guildId,
-                        history: bot.history,
-                    }
-                }
-            )
-            data.ctx.logger.info(`成功持久化 ${guildId} 的对话机器人`)
-        } catch (error) {
-            data.ctx.logger.warn(`数据库写入失败: ${error.message}`)
-        }
     }
 
     /**
@@ -399,7 +394,9 @@ export class ChatBot {
      * @param platform {string} - 聊天平台的类型
      * @returns {Promise<ChatBot | null>} - 返回一个 Promise，解析为 ChatBot 实例或 null
      */
-    static async tryRestoreFromDB(guildId: string, platform: string): Promise<ChatBot | null> {
+    static async tryRestoreFromDB(session: Session): Promise<ChatBot | null> {
+        const { guildId, platform } = session
+        const guildName = await Utils.getGroupName(session)
         try {
             // 寻找匹配的记录
             const [guildIdFind] = await data.ctx.database.get('channel', {
@@ -412,13 +409,14 @@ export class ChatBot {
 
             // 提取历史记录并创建聊天机器人实例
             const { history } = guildIdFind.chatbot
-            const bot = await ChatBot.createBotInstance()
+            const bot = await ChatBot.createBotInstance(session)
 
             // 如果历史记录长度大于 1，将其赋值给新创建的聊天机器人实例
             if (history?.length > 1)
                 bot.history = history
             // 配置聊天机器人的系统提示
             bot.setSystemPrompt(ConfigService.getSystemPrompt(guildId))
+            bot.guildName = guildName
 
             // 返回初始化完毕的聊天机器人实例
             return bot
@@ -426,6 +424,43 @@ export class ChatBot {
             // 如果发生错误，记录警告并返回 null
             data.ctx.logger.warn(`数据库查询失败: ${error.message}`)
             return null
+        }
+    }
+
+    clearHistory() {
+        this.logger.info(`[clearHistory] 清空对话历史 原长度: ${this.history.length}`)
+        const systemPrompt = this.history[0]
+        this.history = [systemPrompt]
+        this.persistBotToDB()
+    }
+
+    // persistTimeStamp: number = 0
+    async persistBotToDB() {
+        const bot = this;
+        const now = Date.now();
+
+        // 检查冷却时间
+        if (now - bot.persistTimeStamp < bot.saveCd) {
+            // data.ctx.logger.debug(`[persistBotToDB] 跳过 ${bot.guildName ?? bot.guildId} 的持久化，冷却时间中`);
+            return;
+        }
+
+        try {
+            await data.ctx.database.set('channel',
+                { id: this.guildId, platform: this.platform },
+                {
+                    chatbot: {
+                        guildId: this.guildId,
+                        history: bot.history,
+                    }
+                }
+            );
+
+            // 成功保存后更新时间戳
+            bot.persistTimeStamp = now;
+            data.ctx.logger.debug(`[persistBotToDB] 成功持久化 ${this.guildName ?? this.guildId} 的对话机器人`);
+        } catch (error) {
+            data.ctx.logger.warn(`[persistBotToDB] ${this.guildName ?? this.guildId} 数据库写入失败: ${error.message}`);
         }
     }
 }

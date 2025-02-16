@@ -60,7 +60,7 @@ export class FavorableSystem extends Service {
     }
 
     async createAiBot() {
-        this.aiBot = await ChatBot.createBotInstance()
+        this.aiBot = await ChatBot.createBotInstance(undefined)
         // 为好感ai机器人设定选择的apiEndpoint和apiKey
         await this.configUpdate()
     }
