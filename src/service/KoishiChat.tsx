@@ -205,6 +205,18 @@ export class KoishiChat {
         // endregion
     }
 
+    static cdCache = new Map<string, number>()
+    static {
+        // 如果需要自动清理缓存（防止内存泄漏）
+        setInterval(() => {
+            const now = Date.now()
+            this.cdCache.forEach((time, userId) => {
+                if (now - time > 24 * 3600 * 1000) { // 清理24小时前的记录
+                    this.cdCache.delete(userId)
+                }
+            })
+        }, 3600 * 1000) // 每小时清理一次
+    }
     static onPoke(ctx: Context) {
         const logger = ctx.logger
         const config = ctx.config as Config
@@ -234,6 +246,16 @@ export class KoishiChat {
                     logger.debug('[onPoke] 忽略私聊poke事件')
                     return
                 }
+
+                // +++ CD检查逻辑 +++
+                const now = Date.now()
+                const lastTime = this.cdCache.get(session.userId)
+                if (lastTime && now - lastTime < 5000) {
+                    logger.debug(`[onPoke] 用户 ${session.userId} 处于冷却时间中，剩余 ${5000 - (now - lastTime)}ms`)
+                    return
+                }
+                this.cdCache.set(session.userId, now) // 更新最后操作时间
+                // --- CD检查逻辑 ---
 
                 try {
                     // 反戳逻辑

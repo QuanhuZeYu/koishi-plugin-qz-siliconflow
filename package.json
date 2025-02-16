@@ -1,7 +1,7 @@
 {
     "name": "@quanhuzeyu/koishi-plugin-qz-siliconflow",
     "description": "koishi插件，支持openaiAPI格式的平台接入，如果你使用控制台将可以同时使用多个平台配置；支持分群组配置，为console界面深度优化，易于配置参数",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "main": "lib/index.js",
     "typings": "lib/index.d.ts",
     "files": [
